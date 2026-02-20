@@ -2,8 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import { env } from './config/env.js';
 import { getConnectionStatus } from './config/db.js';
+import { sessionMiddleware } from './config/session.js';
 import { validate } from './middleware/validate.js';
 import { createTicketSchema } from './validation/schemas.js';
+import authRouter from './routes/auth.js';
 
 const app = express();
 
@@ -14,6 +16,9 @@ app.use(cors({
 
 app.use(express.json());
 
+// Session middleware (must come after express.json())
+app.use(sessionMiddleware);
+
 app.get('/health', (_req, res) => {
   const dbStatus = getConnectionStatus();
   res.json({ 
@@ -21,6 +26,9 @@ app.get('/health', (_req, res) => {
     db: dbStatus 
   });
 });
+
+// Auth routes
+app.use('/auth', authRouter);
 
 // Test route to demonstrate validation (will be replaced with actual routes)
 app.post('/api/test-validation', validate(createTicketSchema, 'body'), (req, res) => {
