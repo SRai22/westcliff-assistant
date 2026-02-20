@@ -9,7 +9,7 @@
 import express, { Request, Response } from 'express';
 import { requireAuth, requireStaff } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
-import { createTicketSchema, ticketQuerySchema, updateTicketStatusSchema } from '../validation/schemas.js';
+import { createTicketSchema, ticketQuerySchema, updateTicketStatusSchema, createMessageSchema } from '../validation/schemas.js';
 import {
   Ticket,
   TicketMessage,
@@ -19,7 +19,7 @@ import {
   UserRole,
   AuditAction,
 } from '../models/index.js';
-import type { CreateTicketInput, TicketQueryInput, UpdateTicketStatusInput } from '../validation/schemas.js';
+import type { CreateTicketInput, TicketQueryInput, UpdateTicketStatusInput, CreateMessageInput } from '../validation/schemas.js';
 
 const router = express.Router();
 
@@ -265,6 +265,134 @@ router.patch(
       });
     } catch (error) {
       console.error('Error updating ticket status:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+/**
+ * GET /tickets/:id/messages
+ * Lists messages for a ticket
+ * Students: can only view messages on their own tickets, excluding internal notes
+ * Staff: can view all messages including internal notes on any ticket
+ */
+router.get(
+  '/:id/messages',
+  requireAuth,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const user = req.user!;
+
+      // Find the ticket to check ownership
+      const ticket = await Ticket.findById(id).lean();
+
+      if (!ticket) {
+        res.status(404).json({ error: 'Ticket not found' });
+        return;
+      }
+
+      // Students can only view messages on their own tickets
+      if (user.role === UserRole.STUDENT && ticket.studentId.toString() !== user._id.toString()) {
+        res.status(404).json({ error: 'Ticket not found' });
+        return;
+      }
+
+      // Build query filter
+      const filter: any = { ticketId: id };
+
+      // Students cannot see internal notes
+      if (user.role === UserRole.STUDENT) {
+        filter.isInternalNote = false;
+      }
+
+      // Fetch messages
+      const messages = await TicketMessage.find(filter)
+        .sort({ createdAt: 1 })
+        .lean();
+
+      res.json({ messages });
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+/**
+ * POST /tickets/:id/messages
+ * Creates a new message on a ticket
+ * Students: can only message their own tickets, cannot create internal notes
+ * Staff: can message any ticket and create internal notes
+ * Updates the parent ticket's updatedAt timestamp
+ */
+router.post(
+  '/:id/messages',
+  requireAuth,
+  validate(createMessageSchema, 'body'),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const data = req.body as CreateMessageInput;
+      const user = req.user!;
+
+      // Find the ticket
+      const ticket = await Ticket.findById(id);
+
+      if (!ticket) {
+        res.status(404).json({ error: 'Ticket not found' });
+        return;
+      }
+
+      // Students can only message their own tickets
+      if (user.role === UserRole.STUDENT && ticket.studentId.toString() !== user._id.toString()) {
+        res.status(403).json({ error: 'Access denied' });
+        return;
+      }
+
+      // Students cannot create internal notes (silently ignore if they try)
+      const isInternalNote = user.role === UserRole.STAFF ? (data.isInternalNote || false) : false;
+
+      // Create the message
+      const message = await TicketMessage.create({
+        ticketId: id,
+        senderRole: user.role,
+        senderName: user.name,
+        body: data.body,
+        isInternalNote,
+      });
+
+      // Update ticket's updatedAt timestamp
+      ticket.updatedAt = new Date();
+      await ticket.save();
+
+      // Create audit log entry
+      await AuditLog.create({
+        action: AuditAction.MESSAGE_ADDED,
+        userId: user._id,
+        userName: user.name,
+        ticketId: ticket._id,
+        details: {
+          isInternalNote,
+          messageLength: data.body.length,
+        },
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent'),
+      });
+
+      res.status(201).json({
+        message: 'Message added successfully',
+        data: {
+          id: message._id,
+          senderRole: message.senderRole,
+          senderName: message.senderName,
+          body: message.body,
+          isInternalNote: message.isInternalNote,
+          createdAt: message.createdAt,
+        },
+      });
+    } catch (error) {
+      console.error('Error creating message:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   }
