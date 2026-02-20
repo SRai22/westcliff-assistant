@@ -1,4 +1,17 @@
-// Export all models
+/**
+ * Export all models
+ * 
+ * MongoDB Collection Names:
+ * Mongoose auto-generates collection names by converting model names to lowercase and pluralizing.
+ * - User              -> users
+ * - Ticket            -> tickets
+ * - TicketMessage     -> ticketmessages
+ * - TicketStatusHistory -> ticketstatushistories
+ * - AuditLog          -> auditlogs
+ * - Article           -> articles
+ * 
+ * Use these collection names when querying MongoDB directly (e.g., via mongosh).
+ */
 export { User, UserRole, type IUser } from './User.js';
 export {
   Ticket,
