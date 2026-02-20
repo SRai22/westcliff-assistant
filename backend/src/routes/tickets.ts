@@ -7,9 +7,9 @@
  */
 
 import express, { Request, Response } from 'express';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireStaff } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
-import { createTicketSchema, ticketQuerySchema } from '../validation/schemas.js';
+import { createTicketSchema, ticketQuerySchema, updateTicketStatusSchema } from '../validation/schemas.js';
 import {
   Ticket,
   TicketMessage,
@@ -19,7 +19,7 @@ import {
   UserRole,
   AuditAction,
 } from '../models/index.js';
-import type { CreateTicketInput, TicketQueryInput } from '../validation/schemas.js';
+import type { CreateTicketInput, TicketQueryInput, UpdateTicketStatusInput } from '../validation/schemas.js';
 
 const router = express.Router();
 
@@ -194,6 +194,77 @@ router.post(
       });
     } catch (error) {
       console.error('Error creating ticket:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+/**
+ * PATCH /tickets/:id/status
+ * Updates ticket status (staff only)
+ * Creates TicketStatusHistory and AuditLog entries
+ */
+router.patch(
+  '/:id/status',
+  requireStaff,
+  validate(updateTicketStatusSchema, 'body'),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const data = req.body as UpdateTicketStatusInput;
+      const user = req.user!;
+
+      // Find the ticket
+      const ticket = await Ticket.findById(id);
+
+      if (!ticket) {
+        res.status(404).json({ error: 'Ticket not found' });
+        return;
+      }
+
+      // Save old status for history
+      const fromStatus = ticket.status;
+      const toStatus = data.status as TicketStatus;
+
+      // Update ticket status
+      ticket.status = toStatus;
+      await ticket.save();
+
+      // Create status history entry
+      await TicketStatusHistory.create({
+        ticketId: ticket._id,
+        fromStatus,
+        toStatus,
+        changedBy: user._id,
+        changedByName: user.name,
+        reason: data.reason || undefined,
+      });
+
+      // Create audit log entry
+      await AuditLog.create({
+        action: AuditAction.TICKET_STATUS_CHANGED,
+        userId: user._id,
+        userName: user.name,
+        ticketId: ticket._id,
+        details: {
+          fromStatus,
+          toStatus,
+          reason: data.reason,
+        },
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent'),
+      });
+
+      res.json({
+        message: 'Ticket status updated successfully',
+        ticket: {
+          id: ticket._id,
+          status: ticket.status,
+          updatedAt: ticket.updatedAt,
+        },
+      });
+    } catch (error) {
+      console.error('Error updating ticket status:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   }
