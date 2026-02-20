@@ -7,6 +7,7 @@
  */
 
 import express, { Request, Response } from 'express';
+import { Server as SocketIOServer } from 'socket.io';
 import { requireAuth, requireStaff } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { createTicketSchema, ticketQuerySchema, updateTicketStatusSchema, createMessageSchema } from '../validation/schemas.js';
@@ -156,6 +157,21 @@ router.post(
         isInternalNote: false,
       });
 
+      // Broadcast new message via Socket.io
+      const io: SocketIOServer = req.app.get('io');
+      if (io) {
+        const { broadcastMessage } = await import('../sockets/index.js');
+        broadcastMessage(io, ticket._id.toString(), {
+          id: message._id.toString(),
+          ticketId: ticket._id.toString(),
+          senderRole: message.senderRole,
+          senderName: message.senderName,
+          body: message.body,
+          isInternalNote: message.isInternalNote,
+          createdAt: message.createdAt.toISOString(),
+        });
+      }
+
       // Create status history entry (to NEW)
       const statusHistory = await TicketStatusHistory.create({
         ticketId: ticket._id,
@@ -254,6 +270,19 @@ router.patch(
         ipAddress: req.ip,
         userAgent: req.get('user-agent'),
       });
+
+      // Broadcast status change via Socket.io
+      const io: SocketIOServer = req.app.get('io');
+      if (io) {
+        const { broadcastStatusChange } = await import('../sockets/index.js');
+        broadcastStatusChange(io, id.toString(), {
+          ticketId: id.toString(),
+          oldStatus: fromStatus,
+          newStatus: toStatus,
+          changedBy: user.name,
+          changedAt: new Date().toISOString(),
+        });
+      }
 
       res.json({
         message: 'Ticket status updated successfully',
@@ -361,6 +390,21 @@ router.post(
         body: data.body,
         isInternalNote,
       });
+
+      // Broadcast new message via Socket.io
+      const io: SocketIOServer = req.app.get('io');
+      if (io) {
+        const { broadcastMessage } = await import('../sockets/index.js');
+        broadcastMessage(io, id.toString(), {
+          id: message._id.toString(),
+          ticketId: id.toString(),
+          senderRole: message.senderRole,
+          senderName: message.senderName,
+          body: message.body,
+          isInternalNote: message.isInternalNote,
+          createdAt: message.createdAt.toISOString(),
+        });
+      }
 
       // Update ticket's updatedAt timestamp
       ticket.updatedAt = new Date();
