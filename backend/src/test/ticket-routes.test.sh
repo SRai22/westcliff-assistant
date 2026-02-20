@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# BE-06: Ticket CRUD Routes Integration Tests
+# Ticket CRUD Routes Integration Tests
 # Tests ticket listing, retrieval, and creation with proper RBAC
 #
 # NOTE: MongoDB Collection Names (for manual verification)
@@ -26,7 +26,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 echo "=========================================="
-echo "BE-06: Ticket CRUD Routes Tests"
+echo "Ticket CRUD Routes Tests"
 echo "=========================================="
 echo ""
 

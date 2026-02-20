@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# BE-07: Ticket Status Update Integration Tests
+# Ticket Status Update Integration Tests
 # Tests status update endpoint with proper RBAC, history tracking, and audit logging
 #
 # NOTE: MongoDB Collection Names (for manual verification)
@@ -23,7 +23,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 echo "=========================================="
-echo "BE-07: Ticket Status Update Tests"
+echo "Ticket Status Update Tests"
 echo "=========================================="
 echo ""
 
@@ -36,10 +36,10 @@ http_code=$(echo "$response" | tail -n1)
 body=$(echo "$response" | head -n-1)
 
 if [ "$http_code" = "200" ]; then
-  echo -e "${GREEN}✓ PASS${NC}: Student login successful"
+  echo -e "${GREEN} PASS${NC}: Student login successful"
   PASSED=$((PASSED + 1))
 else
-  echo -e "${RED}✗ FAIL${NC}: Student login failed with code $http_code"
+  echo -e "${RED} FAIL${NC}: Student login failed with code $http_code"
   echo "Response: $body"
   FAILED=$((FAILED + 1))
 fi
@@ -59,12 +59,12 @@ http_code=$(echo "$response" | tail -n1)
 body=$(echo "$response" | head -n-1)
 
 if [ "$http_code" = "201" ]; then
-  echo -e "${GREEN}✓ PASS${NC}: Ticket created successfully"
+  echo -e "${GREEN} PASS${NC}: Ticket created successfully"
   TICKET_ID=$(echo "$body" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
   echo "Ticket ID: $TICKET_ID"
   PASSED=$((PASSED + 1))
 else
-  echo -e "${RED}✗ FAIL${NC}: Expected 201, got $http_code"
+  echo -e "${RED} FAIL${NC}: Expected 201, got $http_code"
   echo "Response: $body"
   FAILED=$((FAILED + 1))
 fi
@@ -80,10 +80,10 @@ if [ -n "$TICKET_ID" ]; then
   body=$(echo "$response" | head -n-1)
 
   if [ "$http_code" = "403" ]; then
-    echo -e "${GREEN}✓ PASS${NC}: Student correctly denied from updating status"
+    echo -e "${GREEN} PASS${NC}: Student correctly denied from updating status"
     PASSED=$((PASSED + 1))
   else
-    echo -e "${RED}✗ FAIL${NC}: Expected 403, got $http_code"
+    echo -e "${RED} FAIL${NC}: Expected 403, got $http_code"
     echo "Response: $body"
     FAILED=$((FAILED + 1))
   fi
@@ -101,10 +101,10 @@ http_code=$(echo "$response" | tail -n1)
 body=$(echo "$response" | head -n-1)
 
 if [ "$http_code" = "200" ]; then
-  echo -e "${GREEN}✓ PASS${NC}: Staff login successful"
+  echo -e "${GREEN} PASS${NC}: Staff login successful"
   PASSED=$((PASSED + 1))
 else
-  echo -e "${RED}✗ FAIL${NC}: Staff login failed with code $http_code"
+  echo -e "${RED} FAIL${NC}: Staff login failed with code $http_code"
   echo "Response: $body"
   FAILED=$((FAILED + 1))
 fi
@@ -120,11 +120,11 @@ if [ -n "$TICKET_ID" ]; then
   body=$(echo "$response" | head -n-1)
 
   if [ "$http_code" = "200" ]; then
-    echo -e "${GREEN}✓ PASS${NC}: Status updated successfully"
+    echo -e "${GREEN} PASS${NC}: Status updated successfully"
     echo "Response: $body"
     PASSED=$((PASSED + 1))
   else
-    echo -e "${RED}✗ FAIL${NC}: Expected 200, got $http_code"
+    echo -e "${RED} FAIL${NC}: Expected 200, got $http_code"
     echo "Response: $body"
     FAILED=$((FAILED + 1))
   fi
@@ -143,14 +143,14 @@ if [ -n "$TICKET_ID" ]; then
   if [ "$http_code" = "200" ]; then
     status=$(echo "$body" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4)
     if [ "$status" = "IN_PROGRESS" ]; then
-      echo -e "${GREEN}✓ PASS${NC}: Ticket status is IN_PROGRESS"
+      echo -e "${GREEN} PASS${NC}: Ticket status is IN_PROGRESS"
       PASSED=$((PASSED + 1))
     else
-      echo -e "${RED}✗ FAIL${NC}: Expected status IN_PROGRESS, got $status"
+      echo -e "${RED} FAIL${NC}: Expected status IN_PROGRESS, got $status"
       FAILED=$((FAILED + 1))
     fi
   else
-    echo -e "${RED}✗ FAIL${NC}: Could not fetch ticket, got $http_code"
+    echo -e "${RED} FAIL${NC}: Could not fetch ticket, got $http_code"
     FAILED=$((FAILED + 1))
   fi
 else
@@ -168,10 +168,10 @@ if [ -n "$TICKET_ID" ]; then
   body=$(echo "$response" | head -n-1)
 
   if [ "$http_code" = "200" ]; then
-    echo -e "${GREEN}✓ PASS${NC}: Status updated to WAITING"
+    echo -e "${GREEN} PASS${NC}: Status updated to WAITING"
     PASSED=$((PASSED + 1))
   else
-    echo -e "${RED}✗ FAIL${NC}: Expected 200, got $http_code"
+    echo -e "${RED} FAIL${NC}: Expected 200, got $http_code"
     echo "Response: $body"
     FAILED=$((FAILED + 1))
   fi
@@ -190,10 +190,10 @@ if [ -n "$TICKET_ID" ]; then
   body=$(echo "$response" | head -n-1)
 
   if [ "$http_code" = "200" ]; then
-    echo -e "${GREEN}✓ PASS${NC}: Status updated to RESOLVED"
+    echo -e "${GREEN} PASS${NC}: Status updated to RESOLVED"
     PASSED=$((PASSED + 1))
   else
-    echo -e "${RED}✗ FAIL${NC}: Expected 200, got $http_code"
+    echo -e "${RED} FAIL${NC}: Expected 200, got $http_code"
     echo "Response: $body"
     FAILED=$((FAILED + 1))
   fi
@@ -211,10 +211,10 @@ http_code=$(echo "$response" | tail -n1)
 body=$(echo "$response" | head -n-1)
 
 if [ "$http_code" = "404" ]; then
-  echo -e "${GREEN}✓ PASS${NC}: Non-existent ticket returns 404"
+  echo -e "${GREEN} PASS${NC}: Non-existent ticket returns 404"
   PASSED=$((PASSED + 1))
 else
-  echo -e "${RED}✗ FAIL${NC}: Expected 404, got $http_code"
+  echo -e "${RED} FAIL${NC}: Expected 404, got $http_code"
   echo "Response: $body"
   FAILED=$((FAILED + 1))
 fi
@@ -230,10 +230,10 @@ if [ -n "$TICKET_ID" ]; then
   body=$(echo "$response" | head -n-1)
 
   if [ "$http_code" = "400" ]; then
-    echo -e "${GREEN}✓ PASS${NC}: Invalid status rejected with 400"
+    echo -e "${GREEN} PASS${NC}: Invalid status rejected with 400"
     PASSED=$((PASSED + 1))
   else
-    echo -e "${RED}✗ FAIL${NC}: Expected 400, got $http_code"
+    echo -e "${RED} FAIL${NC}: Expected 400, got $http_code"
     echo "Response: $body"
     FAILED=$((FAILED + 1))
   fi
