@@ -147,6 +147,62 @@ export const ticketQuerySchema = z.object({
     .pipe(z.number().positive().max(100)),
 });
 
+// AI Intake schemas
+export const aiIntakeStartSchema = z.object({
+  text: z.string().min(5, 'Query must be at least 5 characters'),
+  userContext: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const aiIntakeAnswerSchema = z.object({
+  triageResult: z.object({
+    category: z.enum(CATEGORIES as readonly [string, ...string[]]),
+    service: z.string(),
+    clarifyingQuestions: z.array(
+      z.object({
+        id: z.string(),
+        question: z.string(),
+        type: z.enum(['radio', 'checkbox', 'text']),
+        options: z.array(z.string()).optional(),
+      })
+    ),
+    suggestedArticles: z.array(z.unknown()), // Article IDs or objects
+    ticketDraft: z.object({
+      summary: z.string(),
+      description: z.string(),
+      priority: z.enum(PRIORITIES as readonly [string, ...string[]]),
+    }),
+    confidence: z.number().min(0).max(1),
+    handoffRecommendation: z.enum(['ARTICLE_FIRST', 'CREATE_TICKET']),
+  }),
+  answers: z.record(z.string(), z.union([z.string(), z.array(z.string())])),
+});
+
+// AI Staff Assist schemas
+export const aiSummarizeSchema = z.object({
+  ticketId: z.string(),
+  messages: z.array(
+    z.object({
+      senderRole: z.string(),
+      senderName: z.string(),
+      body: z.string(),
+      createdAt: z.string(),
+    })
+  ),
+});
+
+export const aiDraftReplySchema = z.object({
+  ticketId: z.string(),
+  messages: z.array(
+    z.object({
+      senderRole: z.string(),
+      senderName: z.string(),
+      body: z.string(),
+      createdAt: z.string(),
+    })
+  ),
+  tone: z.enum(['professional', 'friendly', 'concise']).optional().default('professional'),
+});
+
 // Type exports for TypeScript
 export type LoginInput = z.infer<typeof loginSchema>;
 export type CreateTicketInput = z.infer<typeof createTicketSchema>;
@@ -157,3 +213,7 @@ export type ArticleQueryInput = z.infer<typeof articleQuerySchema>;
 export type CreateArticleInput = z.infer<typeof createArticleSchema>;
 export type UpdateArticleInput = z.infer<typeof updateArticleSchema>;
 export type TicketQueryInput = z.infer<typeof ticketQuerySchema>;
+export type AIIntakeStartInput = z.infer<typeof aiIntakeStartSchema>;
+export type AIIntakeAnswerInput = z.infer<typeof aiIntakeAnswerSchema>;
+export type AISummarizeInput = z.infer<typeof aiSummarizeSchema>;
+export type AIDraftReplyInput = z.infer<typeof aiDraftReplySchema>;

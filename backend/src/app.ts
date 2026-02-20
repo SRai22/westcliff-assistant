@@ -8,6 +8,7 @@ import { createTicketSchema } from './validation/schemas.js';
 import authRouter from './routes/auth.js';
 import ticketsRouter from './routes/tickets.js';
 import articlesRouter from './routes/articles.js';
+import aiProxyRouter from './routes/ai-proxy.js';
 import { requireAuth, requireStaff } from './middleware/auth.js';
 
 const app = express();
@@ -38,6 +39,9 @@ app.use('/tickets', ticketsRouter);
 
 // Article routes
 app.use('/articles', articlesRouter);
+
+// AI proxy routes (handles /tickets/intake/* and /tickets/:id/ai/*)
+app.use(aiProxyRouter);
 
 // Test routes for RBAC middleware
 app.get('/api/test-auth', requireAuth, (req, res) => {
