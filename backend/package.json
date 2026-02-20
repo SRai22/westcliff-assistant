@@ -7,7 +7,16 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "seed": "tsx src/scripts/seed.ts"
+    "seed": "tsx src/scripts/seed.ts",
+    "test": "bash src/test/run-all-tests.sh",
+    "test:auth": "bash src/test/auth-endpoints.test.sh",
+    "test:rbac": "bash src/test/rbac-middleware.test.sh",
+    "test:tickets": "bash src/test/ticket-routes.test.sh",
+    "test:status": "bash src/test/ticket-status-update.test.sh",
+    "test:messages": "bash src/test/ticket-messages.test.sh",
+    "test:articles": "bash src/test/articles.test.sh",
+    "test:ai": "bash src/test/ai-proxy.test.sh",
+    "test:socket": "bash src/test/socket.test.sh"
   },
   "dependencies": {
     "@types/express-session": "^1.18.2",
