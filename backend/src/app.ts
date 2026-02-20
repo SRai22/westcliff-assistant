@@ -7,6 +7,7 @@ import { validate } from './middleware/validate.js';
 import { createTicketSchema } from './validation/schemas.js';
 import authRouter from './routes/auth.js';
 import ticketsRouter from './routes/tickets.js';
+import articlesRouter from './routes/articles.js';
 import { requireAuth, requireStaff } from './middleware/auth.js';
 
 const app = express();
@@ -34,6 +35,9 @@ app.use('/auth', authRouter);
 
 // Ticket routes
 app.use('/tickets', ticketsRouter);
+
+// Article routes
+app.use('/articles', articlesRouter);
 
 // Test routes for RBAC middleware
 app.get('/api/test-auth', requireAuth, (req, res) => {
