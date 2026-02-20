@@ -6,6 +6,7 @@ import { sessionMiddleware } from './config/session.js';
 import { validate } from './middleware/validate.js';
 import { createTicketSchema } from './validation/schemas.js';
 import authRouter from './routes/auth.js';
+import { requireAuth, requireStaff } from './middleware/auth.js';
 
 const app = express();
 
@@ -29,6 +30,31 @@ app.get('/health', (_req, res) => {
 
 // Auth routes
 app.use('/auth', authRouter);
+
+// Test routes for RBAC middleware
+app.get('/api/test-auth', requireAuth, (req, res) => {
+  res.json({ 
+    message: 'Authentication successful',
+    user: {
+      id: req.user!._id,
+      email: req.user!.email,
+      name: req.user!.name,
+      role: req.user!.role
+    }
+  });
+});
+
+app.get('/api/test-staff', requireStaff, (req, res) => {
+  res.json({ 
+    message: 'Staff access granted',
+    user: {
+      id: req.user!._id,
+      email: req.user!.email,
+      name: req.user!.name,
+      role: req.user!.role
+    }
+  });
+});
 
 // Test route to demonstrate validation (will be replaced with actual routes)
 app.post('/api/test-validation', validate(createTicketSchema, 'body'), (req, res) => {
