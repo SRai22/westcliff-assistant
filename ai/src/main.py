@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 import logging
 
 from .config import settings
+from .prompts import load_all_templates, PromptTemplateError
 
 # Configure logging
 logging.basicConfig(
@@ -24,9 +25,17 @@ async def lifespan(app: FastAPI):
     # Validate configuration
     try:
         settings.validate_provider_config()
-        logger.info("✅ Provider configuration validated")
+        logger.info("Provider configuration validated")
     except ValueError as e:
-        logger.error(f"❌ Configuration error: {e}")
+        logger.error(f" Configuration error: {e}")
+        raise
+    
+    # Load prompt templates
+    try:
+        templates = load_all_templates()
+        logger.info(f"Loaded {len(templates)} prompt template(s)")
+    except PromptTemplateError as e:
+        logger.error(f"Failed to load prompt templates: {e}")
         raise
     
     yield
