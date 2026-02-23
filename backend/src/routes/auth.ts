@@ -1,12 +1,85 @@
 /**
  * Authentication routes
- * Provides dev-login, user profile, and logout endpoints
+ * Provides Google OAuth (ID token verification), user profile, and logout endpoints
  */
 
 import { Router, Request, Response } from 'express';
+import { OAuth2Client } from 'google-auth-library';
 import { User, UserRole } from '../models/User.js';
+import { env } from '../config/env.js';
 
 const router = Router();
+const googleClient = new OAuth2Client(env.GOOGLE_CLIENT_ID);
+
+/**
+ * POST /auth/google/verify
+ * Verifies a Google Sign-In ID token, upserts the user, and creates a session
+ */
+router.post('/google/verify', async (req: Request, res: Response) => {
+  try {
+    const { idToken } = req.body;
+
+    if (!idToken || typeof idToken !== 'string') {
+      res.status(400).json({ error: 'ID token is required' });
+      return;
+    }
+
+    // Verify the token with Google
+    let payload;
+    try {
+      const ticket = await googleClient.verifyIdToken({
+        idToken,
+        audience: env.GOOGLE_CLIENT_ID,
+      });
+      payload = ticket.getPayload();
+    } catch {
+      res.status(401).json({ error: 'Invalid Google ID token' });
+      return;
+    }
+
+    if (!payload || !payload.email) {
+      res.status(401).json({ error: 'Invalid token payload' });
+      return;
+    }
+
+    const { sub: googleId, email, name = email, picture } = payload;
+
+    // Determine role — any @westcliff.edu address without "student" in it gets STAFF
+    const role = email.endsWith('@westcliff.edu') && !email.includes('student')
+      ? UserRole.STAFF
+      : UserRole.STUDENT;
+
+    // Upsert user
+    const user = await User.findOneAndUpdate(
+      { googleId },
+      {
+        $set: {
+          email: email.toLowerCase(),
+          name,
+          avatarUrl: picture,
+          role,
+        },
+        $setOnInsert: { googleId },
+      },
+      { upsert: true, new: true, runValidators: true }
+    );
+
+    // Create session
+    req.session.userId = user._id.toString();
+
+    res.json({
+      id: user._id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      avatarUrl: user.avatarUrl,
+      createdAt: user.createdAt,
+    });
+  } catch (error) {
+    console.error('Google verify error:', error);
+    res.status(500).json({ error: 'Internal server error during authentication' });
+  }
+});
 
 /**
  * POST /auth/dev-login

@@ -1,69 +1,76 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
-import { User, UserRole } from '@/types';
-import { mockUsers } from '@/data/mockData';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { User } from '@/types';
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string) => Promise<void>;
-  logout: () => void;
-  switchRole: (role: UserRole) => void; // For demo purposes
+  loginWithGoogle: (idToken: string) => Promise<void>;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function mapApiUser(data: Record<string, unknown>): User {
+  return {
+    id: String(data.id ?? data._id ?? ''),
+    name: String(data.name ?? ''),
+    email: String(data.email ?? ''),
+    role: (data.role as User['role']) ?? 'STUDENT',
+    avatarUrl: data.avatarUrl ? String(data.avatarUrl) : undefined,
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(() => {
-    // Check for saved user in localStorage (demo persistence)
-    const saved = localStorage.getItem('westcliff_user');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  });
-  const [isLoading, setIsLoading] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const login = useCallback(async (email: string) => {
+  // On mount, restore session from backend if one exists
+  useEffect(() => {
+    fetch(`${API_BASE}/auth/me`, { credentials: 'include' })
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (data) setUser(mapApiUser(data));
+      })
+      .catch(() => {})
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  const loginWithGoogle = useCallback(async (idToken: string) => {
     setIsLoading(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Find user by email or create a demo user
-    let foundUser = mockUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
-    
-    if (!foundUser) {
-      // Create a demo student user
-      foundUser = {
-        id: `user-${Date.now()}`,
-        name: email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-        email,
-        role: 'STUDENT',
-      };
+    try {
+      const res = await fetch(`${API_BASE}/auth/google/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ idToken }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error || 'Authentication failed');
+      }
+
+      const data = await res.json();
+      setUser(mapApiUser(data));
+    } finally {
+      setIsLoading(false);
     }
-    
-    setUser(foundUser);
-    localStorage.setItem('westcliff_user', JSON.stringify(foundUser));
-    setIsLoading(false);
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch {
+      // best-effort: clear local state even if server call fails
+    }
     setUser(null);
-    localStorage.removeItem('westcliff_user');
   }, []);
-
-  // Demo function to switch roles
-  const switchRole = useCallback((role: UserRole) => {
-    if (user) {
-      const updatedUser = { ...user, role };
-      setUser(updatedUser);
-      localStorage.setItem('westcliff_user', JSON.stringify(updatedUser));
-    }
-  }, [user]);
 
   return (
     <AuthContext.Provider
@@ -71,9 +78,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         isLoading,
         isAuthenticated: !!user,
-        login,
+        loginWithGoogle,
         logout,
-        switchRole,
       }}
     >
       {children}

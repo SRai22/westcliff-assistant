@@ -27,7 +27,7 @@ import { cn } from '@/lib/utils';
 import westcliffLogo from '@/assets/westcliff-logo-2.png';
 
 export function Header() {
-  const { user, logout, switchRole } = useAuth();
+  const { user, logout } = useAuth();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -90,25 +90,10 @@ export function Header() {
 
         {/* User Menu */}
         <div className="flex items-center gap-3">
-          {/* Demo Role Switcher */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="hidden sm:flex gap-2">
-                <Badge variant={isStaff ? 'default' : 'secondary'} className="text-xs">
-                  {user?.role}
-                </Badge>
-                <ChevronDown className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => switchRole('STUDENT')}>
-                Switch to Student
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => switchRole('STAFF')}>
-                Switch to Staff
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Role Badge */}
+          <Badge variant={isStaff ? 'default' : 'secondary'} className="hidden sm:flex text-xs">
+            {user?.role}
+          </Badge>
 
           {/* User Avatar Dropdown */}
           <DropdownMenu>
@@ -185,13 +170,6 @@ export function Header() {
             <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border">
               <span className="text-sm text-muted-foreground">Role:</span>
               <Badge variant={isStaff ? 'default' : 'secondary'}>{user?.role}</Badge>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => switchRole(isStaff ? 'STUDENT' : 'STAFF')}
-              >
-                Switch
-              </Button>
             </div>
           </nav>
         </div>

@@ -4,10 +4,10 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { User, Mail, Shield, LogOut } from 'lucide-react';
+import { Mail, Shield, LogOut } from 'lucide-react';
 
 export default function ProfilePage() {
-  const { user, logout, switchRole } = useAuth();
+  const { user, logout } = useAuth();
 
   const getInitials = (name: string) => {
     return name
@@ -48,34 +48,6 @@ export default function ProfilePage() {
             <Badge variant={user?.role === 'STAFF' ? 'default' : 'secondary'}>
               {user?.role}
             </Badge>
-          </div>
-
-          <Separator />
-
-          {/* Demo Role Switcher */}
-          <div className="rounded-lg bg-muted p-4">
-            <h4 className="text-sm font-medium mb-3">Demo Controls</h4>
-            <p className="text-sm text-muted-foreground mb-3">
-              Switch between roles to explore different views
-            </p>
-            <div className="flex gap-2">
-              <Button
-                variant={user?.role === 'STUDENT' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => switchRole('STUDENT')}
-              >
-                <User className="h-4 w-4 mr-2" />
-                Student View
-              </Button>
-              <Button
-                variant={user?.role === 'STAFF' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => switchRole('STAFF')}
-              >
-                <Shield className="h-4 w-4 mr-2" />
-                Staff View
-              </Button>
-            </div>
           </div>
 
           <Separator />
