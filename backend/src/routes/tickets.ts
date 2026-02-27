@@ -21,6 +21,7 @@ import {
   AuditAction,
 } from '../models/index.js';
 import type { CreateTicketInput, TicketQueryInput, UpdateTicketStatusInput, CreateMessageInput } from '../validation/schemas.js';
+/*import { isValidStatusTransition } from '../services/ticketTransitions.js'; Ningmo Liu*/
 
 const router = express.Router();
 
@@ -237,6 +238,22 @@ router.patch(
         res.status(404).json({ error: 'Ticket not found' });
         return;
       }
+
+      /* Validate transition - Ningmo Liu: 
+      Adds business-level validation for ticket status transitions.
+
+      Prevents invalid state changes (e.g., RESOLVED → NEW) 
+      by enforcing an explicit transition map.
+
+      This improves data integrity and aligns ticket workflow 
+      with real-world helpdesk lifecycle management.*/
+      /*if (!isValidStatusTransition(fromStatus, toStatus)) {
+        res.status(400).json({
+          error: 'Invalid status transition',
+          message: `Cannot change status from ${fromStatus} to ${toStatus}`,
+        });
+        return;
+      }*/
 
       // Save old status for history
       const fromStatus = ticket.status;
