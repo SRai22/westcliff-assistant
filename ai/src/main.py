@@ -5,6 +5,7 @@ import logging
 
 from .config import settings
 from .prompts import load_all_templates, PromptTemplateError
+from .routes.intake import router as intake_router
 
 # Configure logging
 logging.basicConfig(
@@ -58,6 +59,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+app.include_router(intake_router)
 
 
 @app.get("/health")
