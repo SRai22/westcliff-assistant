@@ -53,17 +53,29 @@ class TestPromptLoader:
         assert template.name == "assist_draft_reply"
         assert template.output_schema == "DraftReplyResponse"
     
+    def test_get_prompt_assist_suggest_steps(self):
+        """Test loading assist_suggest_steps template."""
+        from src.prompts import get_prompt
+
+        template = get_prompt("assist_suggest_steps")
+
+        assert template.name == "assist_suggest_steps"
+        assert template.output_schema == "SuggestStepsResponse"
+        assert len(template.system) > 0
+        assert len(template.user_template) > 0
+
     def test_get_all_prompts(self):
-        """Test that all 4 prompts are loaded."""
+        """Test that all 5 prompts are loaded (4 original + assist_suggest_steps)."""
         from src.prompts import get_all_prompts
-        
+
         prompts = get_all_prompts()
-        
-        assert len(prompts) == 4
+
+        assert len(prompts) == 5
         assert "intake_triage" in prompts
         assert "intake_followup" in prompts
         assert "assist_summarize" in prompts
         assert "assist_draft_reply" in prompts
+        assert "assist_suggest_steps" in prompts
     
     def test_unknown_prompt_raises_error(self):
         """Test that requesting unknown template raises ValueError."""
@@ -235,19 +247,19 @@ class TestTemplateStructure:
     def test_valid_output_schema_references(self):
         """Test that all templates reference valid output schemas."""
         from src.prompts import get_all_prompts
-        
-        valid_schemas = {
-            "IntakeTriageResponse",
-            "IntakeFollowupResponse",
-            "SummarizeResponse", 
-            "DraftReplyResponse",
-        }
-        
+        from src.prompts.loader import VALID_OUTPUT_SCHEMAS
+
         prompts = get_all_prompts()
-        
+
         for name, template in prompts.items():
-            assert template.output_schema in valid_schemas, \
+            assert template.output_schema in VALID_OUTPUT_SCHEMAS, \
                 f"Template '{name}' has invalid output_schema: {template.output_schema}"
+
+    def test_suggest_steps_schema_is_registered(self):
+        """SuggestStepsResponse must be in the loader's allowlist."""
+        from src.prompts.loader import VALID_OUTPUT_SCHEMAS
+
+        assert "SuggestStepsResponse" in VALID_OUTPUT_SCHEMAS
     
     def test_templates_have_version(self):
         """Test that all templates have a version string."""

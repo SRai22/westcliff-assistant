@@ -23,9 +23,10 @@ REQUIRED_FIELDS = {"name", "version", "system", "user_template", "output_schema"
 # Valid output schema references
 VALID_OUTPUT_SCHEMAS = {
     "IntakeTriageResponse",
-    "IntakeFollowupResponse", 
+    "IntakeFollowupResponse",
     "SummarizeResponse",
     "DraftReplyResponse",
+    "SuggestStepsResponse",
 }
 
 

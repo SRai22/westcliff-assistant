@@ -157,15 +157,8 @@ export const aiIntakeAnswerSchema = z.object({
   triageResult: z.object({
     category: z.enum(CATEGORIES as readonly [string, ...string[]]),
     service: z.string(),
-    clarifyingQuestions: z.array(
-      z.object({
-        id: z.string(),
-        question: z.string(),
-        type: z.enum(['radio', 'checkbox', 'text']),
-        options: z.array(z.string()).optional(),
-      })
-    ),
-    suggestedArticles: z.array(z.unknown()), // Article IDs or objects
+    clarifyingQuestions: z.array(z.string()),
+    suggestedArticleIds: z.array(z.string()),
     ticketDraft: z.object({
       summary: z.string(),
       description: z.string(),
@@ -174,7 +167,7 @@ export const aiIntakeAnswerSchema = z.object({
     confidence: z.number().min(0).max(1),
     handoffRecommendation: z.enum(['ARTICLE_FIRST', 'CREATE_TICKET']),
   }),
-  answers: z.record(z.string(), z.union([z.string(), z.array(z.string())])),
+  answers: z.array(z.string()).min(1, 'At least one answer is required'),
 });
 
 // AI Staff Assist schemas

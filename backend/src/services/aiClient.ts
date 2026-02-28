@@ -8,22 +8,12 @@ import axios, { AxiosInstance, AxiosError } from 'axios';
 import { env } from '../config/env.js';
 import { CATEGORIES, PRIORITIES } from '../constants.js';
 
-// Type definitions for AI service responses
+// Type definitions for AI service responses — kept in sync with AI service Pydantic schemas
 export interface AITriageResponse {
   category: string;
   service: string;
-  clarifyingQuestions: Array<{
-    id: string;
-    question: string;
-    type: 'radio' | 'checkbox' | 'text';
-    options?: string[];
-  }>;
-  suggestedArticles: Array<{
-    id: string;
-    title: string;
-    category: string;
-    summary: string;
-  }>;
+  clarifyingQuestions: string[];
+  suggestedArticleIds: string[];
   ticketDraft: {
     summary: string;
     description: string;
@@ -34,15 +24,15 @@ export interface AITriageResponse {
 }
 
 export interface AIFollowupResponse {
+  category: string;
+  service: string;
   ticketDraft: {
     summary: string;
     description: string;
     priority: string;
-    category?: string;
   };
-  updatedCategory?: string;
-  updatedPriority?: string;
   confidence: number;
+  additionalContext?: string;
 }
 
 export interface AISummaryResponse {
@@ -109,7 +99,7 @@ export class AIServiceClient {
    */
   async followupIntake(
     triageResult: AITriageResponse,
-    answers: Record<string, string | string[]>
+    answers: string[]
   ): Promise<AIFollowupResponse> {
     if (this.useStubs) {
       return this.getStubFollowupResponse(triageResult, answers);
@@ -217,19 +207,10 @@ export class AIServiceClient {
       category,
       service,
       clarifyingQuestions: [
-        {
-          id: 'q1',
-          question: 'When did this issue first occur?',
-          type: 'radio',
-          options: ['Today', 'This week', 'More than a week ago'],
-        },
-        {
-          id: 'q2',
-          question: 'Have you tried any troubleshooting steps?',
-          type: 'text',
-        },
+        'When did this issue first occur?',
+        'Have you tried any troubleshooting steps?',
       ],
-      suggestedArticles: [],
+      suggestedArticleIds: [],
       ticketDraft: {
         summary: text.length > 100 ? text.substring(0, 97) + '...' : text,
         description: `Student inquiry: ${text}\n\nThis ticket was created via the AI intake system.`,
@@ -242,24 +223,19 @@ export class AIServiceClient {
 
   private getStubFollowupResponse(
     triageResult: AITriageResponse,
-    answers: Record<string, string | string[]>
+    answers: string[]
   ): AIFollowupResponse {
-    // Enhance the description with the answers
-    const answerSummary = Object.entries(answers)
-      .map(([key, value]) => {
-        const question = triageResult.clarifyingQuestions.find((q) => q.id === key);
-        const questionText = question?.question || key;
-        const answerText = Array.isArray(value) ? value.join(', ') : value;
-        return `${questionText}\n${answerText}`;
-      })
+    const answerSummary = triageResult.clarifyingQuestions
+      .map((question, i) => `${question}\n${answers[i] ?? ''}`)
       .join('\n\n');
 
     return {
+      category: triageResult.category,
+      service: triageResult.service,
       ticketDraft: {
         summary: triageResult.ticketDraft.summary,
         description: `${triageResult.ticketDraft.description}\n\nAdditional Information:\n${answerSummary}`,
         priority: triageResult.ticketDraft.priority,
-        category: triageResult.category,
       },
       confidence: 0.85,
     };
