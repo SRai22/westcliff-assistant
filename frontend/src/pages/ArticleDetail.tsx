@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ArrowLeft, Calendar, Tag, Ticket, ChevronRight } from 'lucide-react';
-import { categoryIcons } from '@/data/mockData';
+import { categoryIcons } from '@/utils/categoryIcons';
 import { Article } from '@/types';
 import ReactMarkdown from 'react-markdown';
 

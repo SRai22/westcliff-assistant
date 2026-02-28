@@ -10,13 +10,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { 
+import {
   Search,
   GripVertical,
   Clock,
-  User,
 } from 'lucide-react';
-import { categoryIcons, staffMembers } from '@/data/mockData';
+import { categoryIcons } from '@/utils/categoryIcons';
 import { Ticket, TicketStatus, Priority, TICKET_STATUSES } from '@/types';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
@@ -120,16 +119,6 @@ export default function AdminKanbanPage() {
     }
   };
 
-  const handleAssigneeChange = (ticketId: string, assigneeId: string) => {
-    const assignee = staffMembers.find(s => s.id === assigneeId);
-    setTickets(prev => 
-      prev.map(t => t.id === ticketId 
-        ? { ...t, assigneeId, assigneeName: assignee?.name, updatedAt: new Date().toISOString() } 
-        : t
-      )
-    );
-  };
-
   if (isLoading) {
     return (
       <div className="container py-12 text-center">
@@ -195,11 +184,10 @@ export default function AdminKanbanPage() {
 
             <div className="space-y-3 flex-1">
               {ticketsByStatus[status].map(ticket => (
-                <KanbanCard 
+                <KanbanCard
                   key={ticket.id}
                   ticket={ticket}
                   onStatusChange={handleStatusChange}
-                  onAssigneeChange={handleAssigneeChange}
                 />
               ))}
               {ticketsByStatus[status].length === 0 && (
@@ -218,10 +206,9 @@ export default function AdminKanbanPage() {
 interface KanbanCardProps {
   ticket: Ticket;
   onStatusChange: (ticketId: string, status: TicketStatus) => void;
-  onAssigneeChange: (ticketId: string, assigneeId: string) => void;
 }
 
-function KanbanCard({ ticket, onStatusChange, onAssigneeChange }: KanbanCardProps) {
+function KanbanCard({ ticket, onStatusChange }: KanbanCardProps) {
   return (
     <Card className="kanban-card">
       <div className="flex items-start gap-2">
@@ -265,22 +252,6 @@ function KanbanCard({ ticket, onStatusChange, onAssigneeChange }: KanbanCardProp
               <SelectContent>
                 {TICKET_STATUSES.map(s => (
                   <SelectItem key={s} value={s}>{statusLabels[s]}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={ticket.assigneeId || 'unassigned'}
-              onValueChange={(value) => onAssigneeChange(ticket.id, value)}
-            >
-              <SelectTrigger className="h-8 text-xs">
-                <User className="h-3 w-3 mr-1" />
-                <SelectValue placeholder="Assign" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="unassigned">Unassigned</SelectItem>
-                {staffMembers.map(staff => (
-                  <SelectItem key={staff.id} value={staff.id}>{staff.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

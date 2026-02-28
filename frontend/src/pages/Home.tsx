@@ -1,32 +1,50 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Send, 
-  ArrowRight, 
-  Ticket, 
+import {
+  Send,
+  ArrowRight,
+  Ticket,
   Clock,
   MessageSquare,
   FileText,
 } from 'lucide-react';
-import { mockTickets, mockArticles } from '@/data/mockData';
 import { cn } from '@/lib/utils';
 import { ConversationalTriage } from '@/components/ai/ConversationalTriage';
+import type { Ticket as TicketType, Article } from '@/types';
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
 export default function HomePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [showChat, setShowChat] = useState(false);
+  const [recentTickets, setRecentTickets] = useState<TicketType[]>([]);
+  const [openTicketCount, setOpenTicketCount] = useState(0);
+  const [popularArticles, setPopularArticles] = useState<Article[]>([]);
 
-  // Get user's recent tickets
-  const userTickets = mockTickets.filter(t => t.studentId === 'student-1');
-  const openTickets = userTickets.filter(t => t.status !== 'RESOLVED');
-  const recentTickets = userTickets.slice(0, 3);
+  useEffect(() => {
+    fetch(`${API_BASE}/tickets`, { credentials: 'include' })
+      .then(res => (res.ok ? res.json() : { tickets: [] }))
+      .then(data => {
+        const tickets = data.tickets as TicketType[];
+        setOpenTicketCount(tickets.filter((t: TicketType) => t.status !== 'RESOLVED').length);
+        setRecentTickets(tickets.slice(0, 3));
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/articles?limit=4`, { credentials: 'include' })
+      .then(res => (res.ok ? res.json() : { articles: [] }))
+      .then(data => setPopularArticles(data.articles as Article[]))
+      .catch(() => {});
+  }, []);
 
   const handleStartChat = () => {
     setShowChat(true);
@@ -157,7 +175,7 @@ export default function HomePage() {
           <div>
             <h2 className="text-lg font-semibold mb-4">Popular Articles</h2>
             <div className="space-y-3">
-              {mockArticles.slice(0, 4).map(article => (
+              {popularArticles.map((article: Article) => (
                 <Link key={article.id} to={`/kb/${article.id}`}>
                   <Card className="transition-all hover:shadow-md hover:border-primary/20">
                     <CardContent className="flex items-center gap-4 p-4">
@@ -192,7 +210,7 @@ export default function HomePage() {
               {/* Open Tickets Count */}
               <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
                 <span className="text-sm">Open Tickets</span>
-                <Badge variant="default">{openTickets.length}</Badge>
+                <Badge variant="default">{openTicketCount}</Badge>
               </div>
 
               {/* Recent Tickets */}

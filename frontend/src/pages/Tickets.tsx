@@ -18,7 +18,7 @@ import {
   ArrowRight,
   Clock,
 } from 'lucide-react';
-import { categoryIcons } from '@/data/mockData';
+import { categoryIcons } from '@/utils/categoryIcons';
 import { Ticket, TicketStatus, Priority, TICKET_STATUSES, PRIORITIES } from '@/types';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';

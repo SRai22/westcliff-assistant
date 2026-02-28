@@ -16,7 +16,7 @@ import {
   Bot,
   CheckCircle2,
 } from 'lucide-react';
-import { categoryIcons } from '@/data/mockData';
+import { categoryIcons } from '@/utils/categoryIcons';
 import { Ticket, Message, TicketStatus, Priority } from '@/types';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow, format } from 'date-fns';

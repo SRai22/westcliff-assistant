@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Search, ArrowRight, ChevronRight } from 'lucide-react';
-import { categoryIcons } from '@/data/mockData';
+import { categoryIcons } from '@/utils/categoryIcons';
 import { Article, CATEGORIES, Category } from '@/types';
 import { cn } from '@/lib/utils';
 
