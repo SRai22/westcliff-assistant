@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { io, Socket } from 'socket.io-client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -14,9 +15,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { 
-  ArrowLeft, 
-  Send, 
+import {
+  ArrowLeft,
+  Send,
   Sparkles,
   FileText,
   MessageSquare,
@@ -26,10 +27,12 @@ import {
   ListChecks,
   RefreshCw,
 } from 'lucide-react';
-import { mockTickets, mockMessages, categoryIcons, staffMembers } from '@/data/mockData';
-import { Message, TicketStatus, Priority, TICKET_STATUSES, PRIORITIES } from '@/types';
+import { categoryIcons } from '@/data/mockData';
+import { Message, Ticket, TicketStatus, Priority, TICKET_STATUSES, PRIORITIES } from '@/types';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow, format } from 'date-fns';
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
 const statusLabels: Record<TicketStatus, string> = {
   NEW: 'New',
@@ -44,18 +47,261 @@ const priorityLabels: Record<Priority, string> = {
   HIGH: 'High',
 };
 
+function mapApiTicket(raw: Record<string, unknown>): Ticket {
+  return {
+    id: String(raw._id ?? raw.id ?? ''),
+    studentId: String(raw.studentId ?? ''),
+    studentName: String(raw.studentName ?? ''),
+    studentEmail: String(raw.studentEmail ?? ''),
+    category: raw.category as Ticket['category'],
+    service: String(raw.service ?? ''),
+    priority: raw.priority as Ticket['priority'],
+    status: raw.status as Ticket['status'],
+    summary: String(raw.summary ?? ''),
+    description: String(raw.description ?? ''),
+    createdAt: String(raw.createdAt ?? ''),
+    updatedAt: String(raw.updatedAt ?? ''),
+    assigneeId: raw.assigneeId ? String(raw.assigneeId) : undefined,
+    assigneeName: raw.assigneeName ? String(raw.assigneeName) : undefined,
+    attachments: (raw.attachments as Ticket['attachments']) ?? [],
+  };
+}
+
+function mapApiMessage(raw: Record<string, unknown>): Message {
+  return {
+    id: String(raw._id ?? raw.id ?? ''),
+    ticketId: String(raw.ticketId ?? ''),
+    senderRole: raw.senderRole as Message['senderRole'],
+    senderName: String(raw.senderName ?? ''),
+    body: String(raw.body ?? ''),
+    createdAt: String(raw.createdAt ?? ''),
+    isInternalNote: Boolean(raw.isInternalNote),
+  };
+}
+
 export default function AdminTicketDetailPage() {
   const { ticketId } = useParams();
   const navigate = useNavigate();
+  const [ticket, setTicket] = useState<Ticket | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [replyText, setReplyText] = useState('');
   const [internalNote, setInternalNote] = useState('');
   const [aiDraft, setAiDraft] = useState('');
+  const [aiDraftLabel, setAiDraftLabel] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [isAddingNote, setIsAddingNote] = useState(false);
+  const socketRef = useRef<Socket | null>(null);
 
-  const ticket = mockTickets.find(t => t.id === ticketId);
-  const allMessages = mockMessages.filter(m => m.ticketId === ticketId);
-  const publicMessages = allMessages.filter(m => !m.isInternalNote);
-  const internalNotes = allMessages.filter(m => m.isInternalNote);
+  // Socket.io real-time connection
+  useEffect(() => {
+    if (!ticketId) return;
+
+    const socket = io(API_BASE, { withCredentials: true });
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      socket.emit('join-ticket', ticketId);
+    });
+
+    socket.on('new-message', (msg: {
+      id: string;
+      ticketId: string;
+      senderRole: string;
+      senderName: string;
+      body: string;
+      isInternalNote: boolean;
+      createdAt: string;
+    }) => {
+      setMessages(prev => {
+        if (prev.some(m => m.id === msg.id)) return prev;
+        return [...prev, {
+          id: msg.id,
+          ticketId: msg.ticketId,
+          senderRole: msg.senderRole as Message['senderRole'],
+          senderName: msg.senderName,
+          body: msg.body,
+          createdAt: msg.createdAt,
+          isInternalNote: msg.isInternalNote,
+        }];
+      });
+    });
+
+    socket.on('status-changed', (data: { ticketId: string; newStatus: string }) => {
+      setTicket(prev => prev ? { ...prev, status: data.newStatus as Ticket['status'] } : prev);
+    });
+
+    return () => {
+      socket.emit('leave-ticket', ticketId);
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [ticketId]);
+
+  // Initial data load
+  useEffect(() => {
+    if (!ticketId) return;
+
+    Promise.all([
+      fetch(`${API_BASE}/tickets/${ticketId}`, { credentials: 'include' }),
+      fetch(`${API_BASE}/tickets/${ticketId}/messages`, { credentials: 'include' }),
+    ])
+      .then(async ([ticketRes, messagesRes]) => {
+        if (!ticketRes.ok) {
+          setTicket(null);
+          return;
+        }
+        const [ticketData, messagesData] = await Promise.all([
+          ticketRes.json(),
+          messagesRes.ok ? messagesRes.json() : { messages: [] },
+        ]);
+        setTicket(mapApiTicket(ticketData.ticket as Record<string, unknown>));
+        setMessages(
+          (messagesData.messages as Record<string, unknown>[]).map(mapApiMessage)
+        );
+      })
+      .catch(() => setTicket(null))
+      .finally(() => setIsLoading(false));
+  }, [ticketId]);
+
+  const publicMessages = messages.filter(m => !m.isInternalNote);
+  const internalNotes = messages.filter(m => m.isInternalNote);
+
+  // Status change with optimistic update + revert on failure
+  const handleStatusChange = async (newStatus: TicketStatus) => {
+    if (!ticketId || !ticket) return;
+    const oldStatus = ticket.status;
+
+    setTicket(prev => prev ? { ...prev, status: newStatus } : prev);
+
+    try {
+      const res = await fetch(`${API_BASE}/tickets/${ticketId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) {
+        setTicket(prev => prev ? { ...prev, status: oldStatus } : prev);
+      }
+    } catch {
+      setTicket(prev => prev ? { ...prev, status: oldStatus } : prev);
+    }
+  };
+
+  const handleSendReply = async () => {
+    if (!replyText.trim() || !ticketId) return;
+    setIsSending(true);
+    try {
+      const res = await fetch(`${API_BASE}/tickets/${ticketId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ body: replyText.trim(), isInternalNote: false }),
+      });
+      if (!res.ok) throw new Error('Failed to send');
+      // Message arrives via socket new-message event (with deduplication)
+      setReplyText('');
+    } catch {
+      // error handling in PL-02
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleAddNote = async () => {
+    if (!internalNote.trim() || !ticketId) return;
+    setIsAddingNote(true);
+    try {
+      const res = await fetch(`${API_BASE}/tickets/${ticketId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ body: internalNote.trim(), isInternalNote: true }),
+      });
+      if (!res.ok) throw new Error('Failed to add note');
+      // Note arrives via socket new-message event (with deduplication)
+      setInternalNote('');
+    } catch {
+      // error handling in PL-02
+    } finally {
+      setIsAddingNote(false);
+    }
+  };
+
+  // FE-08: Wire to POST /tickets/:id/ai/summarize
+  const handleAISummarize = async () => {
+    if (!ticketId) return;
+    setIsGenerating(true);
+    setAiDraft('');
+    try {
+      const res = await fetch(`${API_BASE}/tickets/${ticketId}/ai/summarize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        // ticketId required by Zod schema; empty messages array → backend fetches from DB
+        body: JSON.stringify({ ticketId, messages: [] }),
+      });
+      if (!res.ok) throw new Error('Failed to summarize');
+      const data = await res.json() as { summary: string };
+      setAiDraftLabel('AI Summary');
+      setAiDraft(data.summary ?? '');
+    } catch {
+      setAiDraftLabel('AI Summary');
+      setAiDraft('Failed to generate summary. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // FE-08: Wire to POST /tickets/:id/ai/draft-reply
+  const handleAIDraftResponse = async () => {
+    if (!ticketId) return;
+    setIsGenerating(true);
+    setAiDraft('');
+    try {
+      const res = await fetch(`${API_BASE}/tickets/${ticketId}/ai/draft-reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        // ticketId required by Zod schema; empty messages array → backend fetches from DB
+        body: JSON.stringify({ ticketId, messages: [], tone: 'professional' }),
+      });
+      if (!res.ok) throw new Error('Failed to generate draft');
+      const data = await res.json() as { draft: string };
+      setAiDraftLabel('AI Draft Response');
+      setAiDraft(data.draft ?? '');
+    } catch {
+      setAiDraftLabel('AI Draft Response');
+      setAiDraft('Failed to generate draft. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // TODO: Wire to real endpoint once BE ticket for /tickets/:id/ai/suggest-steps is done (see FE-08B)
+  const handleAISuggestSteps = async () => {
+    setIsGenerating(true);
+    setAiDraftLabel('AI Suggested Steps');
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    setAiDraft(`Suggested Next Steps:\n\n1. Verify student details in the system\n2. Review ticket history and prior communications\n3. Draft and send a response to the student\n4. Update ticket status accordingly\n5. Set a follow-up reminder if needed`);
+    setIsGenerating(false);
+  };
+
+  const insertDraft = () => {
+    setReplyText(aiDraft);
+    setAiDraft('');
+    setAiDraftLabel('');
+  };
+
+  if (isLoading) {
+    return (
+      <div className="container py-12 text-center">
+        <p className="text-muted-foreground">Loading ticket...</p>
+      </div>
+    );
+  }
 
   if (!ticket) {
     return (
@@ -70,80 +316,6 @@ export default function AdminTicketDetailPage() {
       </div>
     );
   }
-
-  const getInitials = (name: string) => {
-    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-  };
-
-  const handleSendReply = () => {
-    if (replyText.trim()) {
-      console.log('Sending reply:', replyText);
-      setReplyText('');
-    }
-  };
-
-  const handleAddNote = () => {
-    if (internalNote.trim()) {
-      console.log('Adding internal note:', internalNote);
-      setInternalNote('');
-    }
-  };
-
-  const handleAISummarize = async () => {
-    setIsGenerating(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setAiDraft(`**Summary:**
-The student needs an updated I-20 document for their visa renewal appointment. They have confirmed they are in the MBA program with expected graduation in May 2025.
-
-**Key Points:**
-- Visa expires in 2 months
-- Embassy appointment scheduled
-- MBA student, graduating May 2025
-
-**Recommended Action:**
-Process I-20 update request with priority given the visa timeline.`);
-    setIsGenerating(false);
-  };
-
-  const handleAIDraftResponse = async () => {
-    setIsGenerating(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setAiDraft(`Hi Alex,
-
-Thank you for confirming your program details. I'm happy to help with your I-20 update request.
-
-I've initiated the process for your updated I-20. Given your visa timeline, I'm prioritizing this request. You should receive the updated document via email within 2-3 business days.
-
-Please let me know if you need anything else or if you have questions about your visa renewal process.
-
-Best regards,
-Dr. Sarah Chen
-International Affairs Office`);
-    setIsGenerating(false);
-  };
-
-  const handleAISuggestSteps = async () => {
-    setIsGenerating(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setAiDraft(`**Suggested Next Steps:**
-
-1. ✅ Verify student's enrollment status in SEVIS
-2. ✅ Confirm program end date matches student's statement (May 2025)
-3. 📋 Generate updated I-20 in SEVIS
-4. 📧 Send I-20 to student's email with tracking
-5. 📝 Update ticket status to "Resolved"
-6. 🔄 Follow up in 1 week to confirm receipt
-
-**Notes:**
-- Student has upcoming visa appointment - prioritize
-- Consider adding travel signature if student plans embassy visit abroad`);
-    setIsGenerating(false);
-  };
-
-  const insertDraft = () => {
-    setReplyText(aiDraft.replace(/\*\*/g, '').replace(/\n/g, '\n'));
-    setAiDraft('');
-  };
 
   return (
     <div className="container py-8">
@@ -170,7 +342,11 @@ International Affairs Office`);
                     <span>{ticket.studentEmail}</span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Select defaultValue={ticket.status}>
+                    {/* Status — wired to PATCH /tickets/:id/status */}
+                    <Select
+                      value={ticket.status}
+                      onValueChange={(value) => handleStatusChange(value as TicketStatus)}
+                    >
                       <SelectTrigger className="w-[140px] h-8">
                         <SelectValue />
                       </SelectTrigger>
@@ -180,7 +356,9 @@ International Affairs Office`);
                         ))}
                       </SelectContent>
                     </Select>
-                    <Select defaultValue={ticket.priority}>
+
+                    {/* Priority — read-only display (no PATCH endpoint yet) */}
+                    <Select value={ticket.priority} disabled>
                       <SelectTrigger className="w-[120px] h-8">
                         <SelectValue />
                       </SelectTrigger>
@@ -190,15 +368,17 @@ International Affairs Office`);
                         ))}
                       </SelectContent>
                     </Select>
-                    <Select defaultValue={ticket.assigneeId || 'unassigned'}>
+
+                    {/* Assignee — read-only display (no PATCH endpoint yet) */}
+                    <Select value={ticket.assigneeId || 'unassigned'} disabled>
                       <SelectTrigger className="w-[160px] h-8">
-                        <SelectValue placeholder="Assign to..." />
+                        <SelectValue placeholder="Unassigned" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="unassigned">Unassigned</SelectItem>
-                        {staffMembers.map(staff => (
-                          <SelectItem key={staff.id} value={staff.id}>{staff.name}</SelectItem>
-                        ))}
+                        {ticket.assigneeId && ticket.assigneeName && (
+                          <SelectItem value={ticket.assigneeId}>{ticket.assigneeName}</SelectItem>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -273,9 +453,13 @@ International Affairs Office`);
                       rows={2}
                     />
                     <div className="flex justify-end mt-2">
-                      <Button size="sm" onClick={handleAddNote} disabled={!internalNote.trim()}>
+                      <Button
+                        size="sm"
+                        onClick={handleAddNote}
+                        disabled={!internalNote.trim() || isAddingNote}
+                      >
                         <Lock className="h-4 w-4 mr-2" />
-                        Add Note
+                        {isAddingNote ? 'Adding...' : 'Add Note'}
                       </Button>
                     </div>
                   </div>
@@ -295,9 +479,9 @@ International Affairs Office`);
                   rows={4}
                 />
                 <div className="flex items-center justify-end gap-2">
-                  <Button onClick={handleSendReply} disabled={!replyText.trim()}>
+                  <Button onClick={handleSendReply} disabled={!replyText.trim() || isSending}>
                     <Send className="h-4 w-4 mr-2" />
-                    Send Reply
+                    {isSending ? 'Sending...' : 'Send Reply'}
                   </Button>
                 </div>
               </div>
@@ -315,8 +499,8 @@ International Affairs Office`);
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="w-full justify-start gap-2"
                 onClick={handleAISummarize}
                 disabled={isGenerating}
@@ -324,8 +508,8 @@ International Affairs Office`);
                 <FileText className="h-4 w-4" />
                 Summarize Thread
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="w-full justify-start gap-2"
                 onClick={handleAIDraftResponse}
                 disabled={isGenerating}
@@ -333,8 +517,8 @@ International Affairs Office`);
                 <Wand2 className="h-4 w-4" />
                 Draft Response
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="w-full justify-start gap-2"
                 onClick={handleAISuggestSteps}
                 disabled={isGenerating}
@@ -353,6 +537,12 @@ International Affairs Office`);
                     </div>
                   ) : (
                     <div className="space-y-3">
+                      {aiDraftLabel && (
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Bot className="h-3 w-3" />
+                          <span>{aiDraftLabel} — AI-generated, review before sending</span>
+                        </div>
+                      )}
                       <div className="p-3 rounded-lg bg-secondary/50 text-sm whitespace-pre-wrap">
                         {aiDraft}
                       </div>
@@ -360,7 +550,11 @@ International Affairs Office`);
                         <Button size="sm" onClick={insertDraft} className="flex-1">
                           Insert into Reply
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => setAiDraft('')}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => { setAiDraft(''); setAiDraftLabel(''); }}
+                        >
                           Dismiss
                         </Button>
                       </div>
@@ -379,7 +573,7 @@ International Affairs Office`);
             <CardContent className="space-y-4 text-sm">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Ticket ID</span>
-                <span className="font-mono">{ticket.id}</span>
+                <span className="font-mono text-xs truncate max-w-[140px]">{ticket.id}</span>
               </div>
               <Separator />
               <div className="flex items-center justify-between">
@@ -408,9 +602,8 @@ International Affairs Office`);
 }
 
 function MessageBubble({ message }: { message: Message }) {
-  const getInitials = (name: string) => {
-    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-  };
+  const getInitials = (name: string) =>
+    name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
   return (
     <div className={cn(
@@ -443,7 +636,7 @@ function MessageBubble({ message }: { message: Message }) {
         </div>
         <div className={cn(
           'rounded-2xl px-4 py-3 inline-block text-left',
-          message.senderRole === 'STUDENT' 
+          message.senderRole === 'STUDENT'
             ? 'bg-primary text-primary-foreground rounded-br-sm'
             : 'bg-secondary text-secondary-foreground rounded-bl-sm'
         )}>
