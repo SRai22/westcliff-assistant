@@ -203,6 +203,18 @@ export const aiDraftReplySchema = z.object({
   tone: z.enum(['professional', 'friendly', 'concise']).optional().default('professional'),
 });
 
+export const aiSuggestStepsSchema = z.object({
+  ticketId: z.string(),
+  messages: z.array(
+    z.object({
+      senderRole: z.string(),
+      senderName: z.string(),
+      body: z.string(),
+      createdAt: z.string(),
+    })
+  ),
+});
+
 // Type exports for TypeScript
 export type LoginInput = z.infer<typeof loginSchema>;
 export type CreateTicketInput = z.infer<typeof createTicketSchema>;
@@ -217,3 +229,4 @@ export type AIIntakeStartInput = z.infer<typeof aiIntakeStartSchema>;
 export type AIIntakeAnswerInput = z.infer<typeof aiIntakeAnswerSchema>;
 export type AISummarizeInput = z.infer<typeof aiSummarizeSchema>;
 export type AIDraftReplyInput = z.infer<typeof aiDraftReplySchema>;
+export type AISuggestStepsInput = z.infer<typeof aiSuggestStepsSchema>;

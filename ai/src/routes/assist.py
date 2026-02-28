@@ -16,6 +16,8 @@ from ..schemas.assist import (
     DraftReplyResponse,
     SummarizeRequest,
     SummarizeResponse,
+    SuggestStepsRequest,
+    SuggestStepsResponse,
     TicketMessage,
 )
 
@@ -210,6 +212,93 @@ async def assist_draft_reply(request: DraftReplyRequest) -> DraftReplyResponse:
         suggestedNextSteps=[
             "Review the ticket conversation in full before sending",
             "Route to the appropriate department if needed",
+        ],
+        requiresStaffReview=True,
+    )
+
+
+# =============================================================================
+# POST /assist/suggest-steps
+# =============================================================================
+
+@router.post("/suggest-steps", response_model=SuggestStepsResponse)
+async def assist_suggest_steps(request: SuggestStepsRequest) -> SuggestStepsResponse:
+    """
+    Suggest actionable next steps for a staff member handling a ticket.
+
+    1. Renders the assist_suggest_steps prompt template.
+    2. Calls the LLM (with retries) requesting a structured SuggestStepsResponse.
+    3. Validates output through guardrails.
+    4. Returns the validated steps, or a safe fallback on persistent failure.
+    """
+    logger.info(
+        f"Assist suggest-steps request — ticketId={request.ticketId!r}, "
+        f"messages={len(request.messages)}"
+    )
+
+    # --- Prompt rendering -------------------------------------------------------
+    template = get_prompt("assist_suggest_steps")
+    user_prompt = template.render_user_prompt(
+        ticket_id=request.ticketId,
+        messages=_format_messages(request.messages),
+        additional_context_section=_build_additional_context_section(request.context),
+    )
+    system_prompt = template.render_system_prompt()
+
+    # --- LLM call with retries --------------------------------------------------
+    llm = get_llm_client()
+    last_error: Exception | None = None
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            response: SuggestStepsResponse = await llm.complete(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                output_schema=SuggestStepsResponse,
+            )
+
+            # Enforce requiresStaffReview invariant before guardrail check
+            if not response.requiresStaffReview:
+                logger.warning(
+                    f"LLM returned requiresStaffReview=False — overriding to True "
+                    f"(attempt {attempt}/{MAX_RETRIES})"
+                )
+                response = response.model_copy(update={"requiresStaffReview": True})
+
+            is_valid, validation_message = validate_output(response)
+            if not is_valid:
+                logger.warning(
+                    f"Assist suggest-steps output failed guardrail validation "
+                    f"(attempt {attempt}/{MAX_RETRIES}): {validation_message}"
+                )
+                last_error = ValueError(validation_message)
+                continue
+
+            logger.info(
+                f"Assist suggest-steps succeeded (attempt {attempt}/{MAX_RETRIES}): "
+                f"ticketId={request.ticketId!r}, steps={len(response.steps)}"
+            )
+            return response
+
+        except Exception as exc:
+            logger.warning(
+                f"Assist suggest-steps LLM call failed "
+                f"(attempt {attempt}/{MAX_RETRIES}): {exc}"
+            )
+            last_error = exc
+
+    # --- Fallback after exhausted retries ---------------------------------------
+    logger.error(
+        f"Assist suggest-steps failed after {MAX_RETRIES} attempt(s), "
+        f"returning safe fallback. Last error: {last_error}"
+    )
+    return SuggestStepsResponse(
+        steps=[
+            "Review the full ticket conversation",
+            "Identify the student's primary concern",
+            "Consult the relevant department if needed",
+            "Draft and send a response to the student",
+            "Update ticket status accordingly",
         ],
         requiresStaffReview=True,
     )

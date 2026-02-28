@@ -122,3 +122,44 @@ class DraftReplyResponse(BaseModel):
         if not v.strip():
             raise ValueError("Draft cannot be empty or only whitespace")
         return v.strip()
+
+
+class SuggestStepsRequest(BaseModel):
+    """Request schema for suggesting next steps on a ticket."""
+    ticketId: str = Field(
+        ...,
+        min_length=1,
+        description="ID of the ticket to suggest next steps for"
+    )
+    messages: list[TicketMessage] = Field(
+        ...,
+        min_length=1,
+        description="All messages in the ticket conversation"
+    )
+    context: Optional[str] = Field(
+        default=None,
+        max_length=500,
+        description="Additional context or instructions"
+    )
+
+    @field_validator('messages')
+    @classmethod
+    def must_have_messages(cls, v: list[TicketMessage]) -> list[TicketMessage]:
+        """Ensure at least one message is provided."""
+        if not v:
+            raise ValueError("At least one message must be provided")
+        return v
+
+
+class SuggestStepsResponse(BaseModel):
+    """Response schema for suggested next steps."""
+    steps: list[str] = Field(
+        ...,
+        min_length=1,
+        max_length=7,
+        description="Ordered list of 1-7 actionable next steps for staff"
+    )
+    requiresStaffReview: bool = Field(
+        default=True,
+        description="Always true — staff must confirm before acting on steps"
+    )

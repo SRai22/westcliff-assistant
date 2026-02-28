@@ -54,6 +54,11 @@ export interface AIDraftReplyResponse {
   suggestedNextSteps: string[];
 }
 
+export interface AISuggestStepsResponse {
+  steps: string[];
+  requiresStaffReview: boolean;
+}
+
 export class AIServiceClient {
   private client: AxiosInstance;
   private useStubs: boolean = false;
@@ -154,6 +159,26 @@ export class AIServiceClient {
     } catch (error) {
       console.error('[AI Service] Draft reply request failed, using stub:', this.getErrorMessage(error));
       return this.getStubDraftReply(messages, tone);
+    }
+  }
+
+  /**
+   * POST /assist/suggest-steps - Suggest next steps for staff handling a ticket
+   */
+  async suggestSteps(
+    ticketId: string,
+    messages: Array<any>
+  ): Promise<AISuggestStepsResponse> {
+    if (this.useStubs) {
+      return this.getStubSuggestSteps();
+    }
+
+    try {
+      const response = await this.client.post('/assist/suggest-steps', { ticketId, messages });
+      return response.data;
+    } catch (error) {
+      console.error('[AI Service] Suggest steps request failed, using stub:', this.getErrorMessage(error));
+      return this.getStubSuggestSteps();
     }
   }
 
@@ -277,6 +302,20 @@ export class AIServiceClient {
         'Update ticket status to IN_PROGRESS',
         'Set follow-up reminder for 2 business days',
       ],
+    };
+  }
+
+  private getStubSuggestSteps(): AISuggestStepsResponse {
+    return {
+      steps: [
+        'Review the full ticket conversation for context',
+        'Verify the student\'s enrollment and account status',
+        'Identify the appropriate department to handle this request',
+        'Draft and send a response to the student',
+        'Update ticket status to IN_PROGRESS',
+        'Set a follow-up reminder for 2 business days',
+      ],
+      requiresStaffReview: true,
     };
   }
 

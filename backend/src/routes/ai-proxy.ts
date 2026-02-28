@@ -13,6 +13,7 @@ import {
   aiIntakeAnswerSchema,
   aiSummarizeSchema,
   aiDraftReplySchema,
+  aiSuggestStepsSchema,
 } from '../validation/schemas.js';
 import { requireAuth, requireStaff } from '../middleware/auth.js';
 import { aiService } from '../services/aiClient.js';
@@ -164,6 +165,54 @@ router.post(
       console.error('[AI Proxy] Draft reply error:', error);
       res.status(500).json({
         error: 'Failed to generate draft reply',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+);
+
+/**
+ * POST /tickets/:id/ai/suggest-steps
+ * Generate suggested next steps for a ticket (STAFF ONLY)
+ */
+router.post(
+  '/tickets/:id/ai/suggest-steps',
+  requireStaff,
+  validateBody(aiSuggestStepsSchema),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const ticketId = req.params.id;
+      const { messages } = req.body;
+
+      // Verify ticket exists
+      const ticket = await Ticket.findById(ticketId);
+      if (!ticket) {
+        res.status(404).json({ error: 'Ticket not found' });
+        return;
+      }
+
+      // If no messages provided in body, fetch from database
+      let messageData = messages;
+      if (!messages || messages.length === 0) {
+        const dbMessages = await TicketMessage.find({ ticketId })
+          .sort({ createdAt: 1 })
+          .lean();
+        messageData = dbMessages.map((msg) => ({
+          senderRole: msg.senderRole,
+          senderName: msg.senderName,
+          body: msg.body,
+          createdAt: msg.createdAt.toISOString(),
+        }));
+      }
+
+      // Call AI service (falls back to stubs if unavailable)
+      const stepsResponse = await aiService.suggestSteps(ticketId.toString(), messageData);
+
+      res.json(stepsResponse);
+    } catch (error) {
+      console.error('[AI Proxy] Suggest steps error:', error);
+      res.status(500).json({
+        error: 'Failed to generate suggested steps',
         details: error instanceof Error ? error.message : 'Unknown error',
       });
     }

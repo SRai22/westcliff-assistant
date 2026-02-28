@@ -280,13 +280,28 @@ export default function AdminTicketDetailPage() {
     }
   };
 
-  // TODO: Wire to real endpoint once BE ticket for /tickets/:id/ai/suggest-steps is done (see FE-08B)
   const handleAISuggestSteps = async () => {
+    if (!ticketId) return;
     setIsGenerating(true);
-    setAiDraftLabel('AI Suggested Steps');
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setAiDraft(`Suggested Next Steps:\n\n1. Verify student details in the system\n2. Review ticket history and prior communications\n3. Draft and send a response to the student\n4. Update ticket status accordingly\n5. Set a follow-up reminder if needed`);
-    setIsGenerating(false);
+    setAiDraft('');
+    try {
+      const res = await fetch(`${API_BASE}/tickets/${ticketId}/ai/suggest-steps`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        // ticketId required by Zod schema; empty messages array → backend fetches from DB
+        body: JSON.stringify({ ticketId, messages: [] }),
+      });
+      if (!res.ok) throw new Error('Failed to generate steps');
+      const data = await res.json() as { steps: string[] };
+      setAiDraftLabel('AI Suggested Steps');
+      setAiDraft((data.steps ?? []).map((s, i) => `${i + 1}. ${s}`).join('\n'));
+    } catch {
+      setAiDraftLabel('AI Suggested Steps');
+      setAiDraft('Failed to generate steps. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const insertDraft = () => {
