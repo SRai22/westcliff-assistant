@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { io, Socket } from 'socket.io-client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -75,6 +76,58 @@ export default function TicketDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [replyText, setReplyText] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const socketRef = useRef<Socket | null>(null);
+
+  // Socket.io real-time connection
+  useEffect(() => {
+    if (!ticketId) return;
+
+    const socket = io(API_BASE, { withCredentials: true });
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      socket.emit('join-ticket', ticketId);
+    });
+
+    socket.on('new-message', (msg: {
+      id: string;
+      ticketId: string;
+      senderRole: string;
+      senderName: string;
+      body: string;
+      isInternalNote: boolean;
+      createdAt: string;
+    }) => {
+      setMessages(prev => {
+        if (prev.some(m => m.id === msg.id)) return prev;
+        return [...prev, {
+          id: msg.id,
+          ticketId: msg.ticketId,
+          senderRole: msg.senderRole as Message['senderRole'],
+          senderName: msg.senderName,
+          body: msg.body,
+          createdAt: msg.createdAt,
+          isInternalNote: msg.isInternalNote,
+        }];
+      });
+    });
+
+    socket.on('status-changed', (data: {
+      ticketId: string;
+      oldStatus: string;
+      newStatus: string;
+      changedBy: string;
+      changedAt: string;
+    }) => {
+      setTicket(prev => prev ? { ...prev, status: data.newStatus as Ticket['status'] } : prev);
+    });
+
+    return () => {
+      socket.emit('leave-ticket', ticketId);
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [ticketId]);
 
   useEffect(() => {
     if (!ticketId) return;
@@ -116,19 +169,7 @@ export default function TicketDetailPage() {
         body: JSON.stringify({ body: replyText.trim(), isInternalNote: false }),
       });
       if (!res.ok) throw new Error('Failed to send');
-      const { data } = await res.json();
-      setMessages(prev => [
-        ...prev,
-        {
-          id: String(data.id ?? data._id ?? ''),
-          ticketId: ticketId,
-          senderRole: data.senderRole,
-          senderName: data.senderName,
-          body: data.body,
-          createdAt: String(data.createdAt ?? new Date().toISOString()),
-          isInternalNote: false,
-        },
-      ]);
+      // Message will arrive via the socket's new-message event (with deduplication)
       setReplyText('');
     } catch {
       // error handling comes in PL-02 (toast notifications)

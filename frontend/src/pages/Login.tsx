@@ -86,7 +86,7 @@ export default function LoginPage() {
           <CardHeader className="text-center pb-4">
             <CardTitle className="text-xl">Sign In</CardTitle>
             <CardDescription>
-              Sign in with your Westcliff Google account
+              Sign in with your Google account
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -105,13 +105,13 @@ export default function LoginPage() {
             <div ref={googleBtnRef} className="w-full flex justify-center" />
 
             <p className="text-center text-xs text-muted-foreground">
-              Use your <strong>@westcliff.edu</strong> Google account to continue.
+              Students can sign in with any Google account. Staff use their <strong>@westcliff.edu</strong> account.
             </p>
           </CardContent>
         </Card>
 
         <p className="text-center text-sm text-muted-foreground mt-6">
-          This portal is for Westcliff University students and staff only.
+          Westcliff University Student Services Portal
         </p>
       </div>
     </div>
