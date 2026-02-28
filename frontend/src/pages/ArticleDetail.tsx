@@ -1,17 +1,70 @@
+import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ArrowLeft, Calendar, Tag, Ticket, ChevronRight } from 'lucide-react';
-import { mockArticles, categoryIcons } from '@/data/mockData';
+import { categoryIcons } from '@/data/mockData';
+import { Article } from '@/types';
 import ReactMarkdown from 'react-markdown';
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+
+function mapApiArticle(raw: Record<string, unknown>): Article {
+  return {
+    id: String(raw._id ?? raw.id ?? ''),
+    title: String(raw.title ?? ''),
+    category: raw.category as Article['category'],
+    summary: String(raw.summary ?? ''),
+    content: String(raw.content ?? ''),
+    tags: (raw.tags as string[]) ?? [],
+    updatedAt: String(raw.updatedAt ?? ''),
+  };
+}
 
 export default function ArticleDetailPage() {
   const { articleId } = useParams();
   const navigate = useNavigate();
+  const [article, setArticle] = useState<Article | null>(null);
+  const [relatedArticles, setRelatedArticles] = useState<Article[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const article = mockArticles.find(a => a.id === articleId);
+  useEffect(() => {
+    if (!articleId) return;
+
+    // Parallel: fetch the article + all articles (for related sidebar)
+    Promise.all([
+      fetch(`${API_BASE}/articles/${articleId}`, { credentials: 'include' }),
+      fetch(`${API_BASE}/articles?limit=100`, { credentials: 'include' }),
+    ])
+      .then(async ([articleRes, allRes]) => {
+        if (!articleRes.ok) {
+          setArticle(null);
+          return;
+        }
+        const [articleData, allData] = await Promise.all([
+          articleRes.json(),
+          allRes.ok ? allRes.json() : { articles: [] },
+        ]);
+        const mapped = mapApiArticle(articleData.article as Record<string, unknown>);
+        setArticle(mapped);
+        const all = (allData.articles as Record<string, unknown>[]).map(mapApiArticle);
+        setRelatedArticles(
+          all.filter(a => a.category === mapped.category && a.id !== mapped.id).slice(0, 3)
+        );
+      })
+      .catch(() => setArticle(null))
+      .finally(() => setIsLoading(false));
+  }, [articleId]);
+
+  if (isLoading) {
+    return (
+      <div className="container py-12 text-center">
+        <p className="text-muted-foreground">Loading article...</p>
+      </div>
+    );
+  }
 
   if (!article) {
     return (
@@ -27,11 +80,6 @@ export default function ArticleDetailPage() {
     );
   }
 
-  // Related articles in same category
-  const relatedArticles = mockArticles
-    .filter(a => a.category === article.category && a.id !== article.id)
-    .slice(0, 3);
-
   return (
     <div className="container py-8">
       {/* Breadcrumb */}
@@ -40,7 +88,7 @@ export default function ArticleDetailPage() {
           Knowledge Base
         </Link>
         <ChevronRight className="h-4 w-4" />
-        <Link 
+        <Link
           to={`/kb?category=${encodeURIComponent(article.category)}`}
           className="hover:text-foreground transition-colors"
         >

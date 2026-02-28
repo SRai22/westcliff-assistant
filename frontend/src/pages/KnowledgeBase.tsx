@@ -1,33 +1,60 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Search, ArrowRight, ChevronRight } from 'lucide-react';
-import { mockArticles, categoryIcons } from '@/data/mockData';
-import { CATEGORIES, Category } from '@/types';
+import { categoryIcons } from '@/data/mockData';
+import { Article, CATEGORIES, Category } from '@/types';
 import { cn } from '@/lib/utils';
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+
+function mapApiArticle(raw: Record<string, unknown>): Article {
+  return {
+    id: String(raw._id ?? raw.id ?? ''),
+    title: String(raw.title ?? ''),
+    category: raw.category as Article['category'],
+    summary: String(raw.summary ?? ''),
+    content: String(raw.content ?? ''),
+    tags: (raw.tags as string[]) ?? [],
+    updatedAt: String(raw.updatedAt ?? ''),
+  };
+}
+
 export default function KnowledgeBasePage() {
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
 
-  // Get article counts per category
+  useEffect(() => {
+    fetch(`${API_BASE}/articles?limit=100`, { credentials: 'include' })
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to load articles');
+        return res.json();
+      })
+      .then(data => setArticles((data.articles as Record<string, unknown>[]).map(mapApiArticle)))
+      .catch(() => setArticles([]))
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  // Category counts computed from live data
   const categoryCounts = CATEGORIES.reduce((acc, cat) => {
-    acc[cat] = mockArticles.filter(a => a.category === cat).length;
+    acc[cat] = articles.filter(a => a.category === cat).length;
     return acc;
   }, {} as Record<Category, number>);
 
-  // Filter articles
-  const filteredArticles = mockArticles.filter(article => {
-    const matchesSearch = !searchQuery || 
+  // Client-side filter: instant search UX
+  const filteredArticles = articles.filter(article => {
+    const matchesSearch = !searchQuery ||
       article.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       article.summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
       article.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
-    
+
     const matchesCategory = !selectedCategory || article.category === selectedCategory;
-    
+
     return matchesSearch && matchesCategory;
   });
 
@@ -70,7 +97,7 @@ export default function KnowledgeBasePage() {
             >
               <span>All Articles</span>
               <Badge variant={!selectedCategory ? 'secondary' : 'outline'} className="text-xs">
-                {mockArticles.length}
+                {articles.length}
               </Badge>
             </button>
             {CATEGORIES.map(cat => (
@@ -89,8 +116,8 @@ export default function KnowledgeBasePage() {
                   <span className="truncate">{cat}</span>
                 </span>
                 {categoryCounts[cat] > 0 && (
-                  <Badge 
-                    variant={selectedCategory === cat ? 'secondary' : 'outline'} 
+                  <Badge
+                    variant={selectedCategory === cat ? 'secondary' : 'outline'}
                     className="text-xs shrink-0 ml-2"
                   >
                     {categoryCounts[cat]}
@@ -113,21 +140,29 @@ export default function KnowledgeBasePage() {
             </div>
           )}
 
-          {filteredArticles.length === 0 ? (
+          {isLoading ? (
+            <div className="py-12 text-center">
+              <p className="text-muted-foreground">Loading articles...</p>
+            </div>
+          ) : filteredArticles.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center">
                 <p className="text-muted-foreground">
-                  No articles found matching your search.
+                  {articles.length === 0
+                    ? 'No articles available yet.'
+                    : 'No articles found matching your search.'}
                 </p>
-                <Button 
-                  variant="link" 
-                  onClick={() => {
-                    setSearchQuery('');
-                    setSelectedCategory(null);
-                  }}
-                >
-                  Clear filters
-                </Button>
+                {articles.length > 0 && (
+                  <Button
+                    variant="link"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setSelectedCategory(null);
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                )}
               </CardContent>
             </Card>
           ) : (
