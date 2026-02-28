@@ -1,8 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -17,10 +16,32 @@ import {
   Clock,
   User,
 } from 'lucide-react';
-import { mockTickets, categoryIcons, staffMembers } from '@/data/mockData';
+import { categoryIcons, staffMembers } from '@/data/mockData';
 import { Ticket, TicketStatus, Priority, TICKET_STATUSES } from '@/types';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+
+function mapApiTicket(raw: Record<string, unknown>): Ticket {
+  return {
+    id: String(raw._id ?? raw.id ?? ''),
+    studentId: String(raw.studentId ?? ''),
+    studentName: String(raw.studentName ?? ''),
+    studentEmail: String(raw.studentEmail ?? ''),
+    category: raw.category as Ticket['category'],
+    service: String(raw.service ?? ''),
+    priority: raw.priority as Ticket['priority'],
+    status: raw.status as Ticket['status'],
+    summary: String(raw.summary ?? ''),
+    description: String(raw.description ?? ''),
+    createdAt: String(raw.createdAt ?? ''),
+    updatedAt: String(raw.updatedAt ?? ''),
+    assigneeId: raw.assigneeId ? String(raw.assigneeId) : undefined,
+    assigneeName: raw.assigneeName ? String(raw.assigneeName) : undefined,
+    attachments: (raw.attachments as Ticket['attachments']) ?? [],
+  };
+}
 
 const statusLabels: Record<TicketStatus, string> = {
   NEW: 'New',
@@ -44,7 +65,18 @@ const priorityLabels: Record<Priority, string> = {
 
 export default function AdminKanbanPage() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [tickets, setTickets] = useState<Ticket[]>(mockTickets);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/tickets`, { credentials: 'include' })
+      .then(res => (res.ok ? res.json() : { tickets: [] }))
+      .then(data => {
+        setTickets((data.tickets as Record<string, unknown>[]).map(mapApiTicket));
+      })
+      .catch(() => {})
+      .finally(() => setIsLoading(false));
+  }, []);
 
   // Filter tickets
   const filteredTickets = tickets.filter(ticket => {
@@ -59,10 +91,33 @@ export default function AdminKanbanPage() {
     return acc;
   }, {} as Record<TicketStatus, Ticket[]>);
 
-  const handleStatusChange = (ticketId: string, newStatus: TicketStatus) => {
-    setTickets(prev => 
+  const handleStatusChange = async (ticketId: string, newStatus: TicketStatus) => {
+    const oldStatus = tickets.find(t => t.id === ticketId)?.status;
+
+    // Optimistic update
+    setTickets(prev =>
       prev.map(t => t.id === ticketId ? { ...t, status: newStatus, updatedAt: new Date().toISOString() } : t)
     );
+
+    try {
+      const res = await fetch(`${API_BASE}/tickets/${ticketId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok && oldStatus) {
+        setTickets(prev =>
+          prev.map(t => t.id === ticketId ? { ...t, status: oldStatus } : t)
+        );
+      }
+    } catch {
+      if (oldStatus) {
+        setTickets(prev =>
+          prev.map(t => t.id === ticketId ? { ...t, status: oldStatus } : t)
+        );
+      }
+    }
   };
 
   const handleAssigneeChange = (ticketId: string, assigneeId: string) => {
@@ -74,6 +129,14 @@ export default function AdminKanbanPage() {
       )
     );
   };
+
+  if (isLoading) {
+    return (
+      <div className="container py-12 text-center">
+        <p className="text-muted-foreground">Loading tickets...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="container py-8">
