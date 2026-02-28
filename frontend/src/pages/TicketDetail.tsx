@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,19 +6,21 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
-import { 
-  ArrowLeft, 
-  Send, 
+import {
+  ArrowLeft,
+  Send,
   Paperclip,
   Clock,
   User,
   Bot,
   CheckCircle2,
 } from 'lucide-react';
-import { mockTickets, mockMessages, categoryIcons } from '@/data/mockData';
-import { Message, TicketStatus, Priority } from '@/types';
+import { categoryIcons } from '@/data/mockData';
+import { Ticket, Message, TicketStatus, Priority } from '@/types';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow, format } from 'date-fns';
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
 const statusLabels: Record<TicketStatus, string> = {
   NEW: 'New',
@@ -33,13 +35,115 @@ const priorityLabels: Record<Priority, string> = {
   HIGH: 'High',
 };
 
+function mapApiTicket(raw: Record<string, unknown>): Ticket {
+  return {
+    id: String(raw._id ?? raw.id ?? ''),
+    studentId: String(raw.studentId ?? ''),
+    studentName: String(raw.studentName ?? ''),
+    studentEmail: String(raw.studentEmail ?? ''),
+    category: raw.category as Ticket['category'],
+    service: String(raw.service ?? ''),
+    priority: raw.priority as Ticket['priority'],
+    status: raw.status as Ticket['status'],
+    summary: String(raw.summary ?? ''),
+    description: String(raw.description ?? ''),
+    createdAt: String(raw.createdAt ?? ''),
+    updatedAt: String(raw.updatedAt ?? ''),
+    assigneeId: raw.assigneeId ? String(raw.assigneeId) : undefined,
+    assigneeName: raw.assigneeName ? String(raw.assigneeName) : undefined,
+    attachments: (raw.attachments as Ticket['attachments']) ?? [],
+  };
+}
+
+function mapApiMessage(raw: Record<string, unknown>): Message {
+  return {
+    id: String(raw._id ?? raw.id ?? ''),
+    ticketId: String(raw.ticketId ?? ''),
+    senderRole: raw.senderRole as Message['senderRole'],
+    senderName: String(raw.senderName ?? ''),
+    body: String(raw.body ?? ''),
+    createdAt: String(raw.createdAt ?? ''),
+    isInternalNote: Boolean(raw.isInternalNote),
+  };
+}
+
 export default function TicketDetailPage() {
   const { ticketId } = useParams();
   const navigate = useNavigate();
+  const [ticket, setTicket] = useState<Ticket | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [replyText, setReplyText] = useState('');
+  const [isSending, setIsSending] = useState(false);
 
-  const ticket = mockTickets.find(t => t.id === ticketId);
-  const messages = mockMessages.filter(m => m.ticketId === ticketId && !m.isInternalNote);
+  useEffect(() => {
+    if (!ticketId) return;
+
+    Promise.all([
+      fetch(`${API_BASE}/tickets/${ticketId}`, { credentials: 'include' }),
+      fetch(`${API_BASE}/tickets/${ticketId}/messages`, { credentials: 'include' }),
+    ])
+      .then(async ([ticketRes, messagesRes]) => {
+        if (!ticketRes.ok) {
+          setTicket(null);
+          return;
+        }
+        const [ticketData, messagesData] = await Promise.all([
+          ticketRes.json(),
+          messagesRes.ok ? messagesRes.json() : { messages: [] },
+        ]);
+        setTicket(mapApiTicket(ticketData.ticket as Record<string, unknown>));
+        setMessages(
+          (messagesData.messages as Record<string, unknown>[]).map(mapApiMessage)
+        );
+      })
+      .catch(() => setTicket(null))
+      .finally(() => setIsLoading(false));
+  }, [ticketId]);
+
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  };
+
+  const handleSendReply = async () => {
+    if (!replyText.trim() || !ticketId) return;
+    setIsSending(true);
+    try {
+      const res = await fetch(`${API_BASE}/tickets/${ticketId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ body: replyText.trim(), isInternalNote: false }),
+      });
+      if (!res.ok) throw new Error('Failed to send');
+      const { data } = await res.json();
+      setMessages(prev => [
+        ...prev,
+        {
+          id: String(data.id ?? data._id ?? ''),
+          ticketId: ticketId,
+          senderRole: data.senderRole,
+          senderName: data.senderName,
+          body: data.body,
+          createdAt: String(data.createdAt ?? new Date().toISOString()),
+          isInternalNote: false,
+        },
+      ]);
+      setReplyText('');
+    } catch {
+      // error handling comes in PL-02 (toast notifications)
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="container py-12 text-center">
+        <p className="text-muted-foreground">Loading ticket...</p>
+      </div>
+    );
+  }
 
   if (!ticket) {
     return (
@@ -54,18 +158,6 @@ export default function TicketDetailPage() {
       </div>
     );
   }
-
-  const getInitials = (name: string) => {
-    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-  };
-
-  const handleSendReply = () => {
-    if (replyText.trim()) {
-      // In a real app, this would make an API call
-      console.log('Sending reply:', replyText);
-      setReplyText('');
-    }
-  };
 
   return (
     <div className="container py-8">
@@ -124,7 +216,7 @@ export default function TicketDetailPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               {messages.map(message => (
-                <div 
+                <div
                   key={message.id}
                   className={cn(
                     'flex gap-3',
@@ -157,7 +249,7 @@ export default function TicketDetailPage() {
                     </div>
                     <div className={cn(
                       'rounded-2xl px-4 py-3 inline-block text-left',
-                      message.senderRole === 'STUDENT' 
+                      message.senderRole === 'STUDENT'
                         ? 'bg-primary text-primary-foreground rounded-br-sm'
                         : 'bg-secondary text-secondary-foreground rounded-bl-sm'
                     )}>
@@ -191,9 +283,12 @@ export default function TicketDetailPage() {
                       <Paperclip className="h-4 w-4 mr-2" />
                       Attach
                     </Button>
-                    <Button onClick={handleSendReply} disabled={!replyText.trim()}>
+                    <Button
+                      onClick={handleSendReply}
+                      disabled={!replyText.trim() || isSending}
+                    >
                       <Send className="h-4 w-4 mr-2" />
-                      Send Reply
+                      {isSending ? 'Sending...' : 'Send Reply'}
                     </Button>
                   </div>
                 </div>
@@ -212,7 +307,7 @@ export default function TicketDetailPage() {
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Ticket ID</span>
-                <span className="font-mono">{ticket.id}</span>
+                <span className="font-mono text-xs truncate max-w-[140px]">{ticket.id}</span>
               </div>
               <Separator />
               <div className="flex items-center justify-between text-sm">

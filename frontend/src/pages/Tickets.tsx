@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -11,17 +11,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { 
-  Search, 
+import {
+  Search,
   Plus,
   Filter,
   ArrowRight,
   Clock,
 } from 'lucide-react';
-import { mockTickets, categoryIcons } from '@/data/mockData';
-import { TicketStatus, Priority, TICKET_STATUSES, PRIORITIES } from '@/types';
+import { categoryIcons } from '@/data/mockData';
+import { Ticket, TicketStatus, Priority, TICKET_STATUSES, PRIORITIES } from '@/types';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
 const statusLabels: Record<TicketStatus, string> = {
   NEW: 'New',
@@ -36,22 +38,53 @@ const priorityLabels: Record<Priority, string> = {
   HIGH: 'High',
 };
 
+function mapApiTicket(raw: Record<string, unknown>): Ticket {
+  return {
+    id: String(raw._id ?? raw.id ?? ''),
+    studentId: String(raw.studentId ?? ''),
+    studentName: String(raw.studentName ?? ''),
+    studentEmail: String(raw.studentEmail ?? ''),
+    category: raw.category as Ticket['category'],
+    service: String(raw.service ?? ''),
+    priority: raw.priority as Ticket['priority'],
+    status: raw.status as Ticket['status'],
+    summary: String(raw.summary ?? ''),
+    description: String(raw.description ?? ''),
+    createdAt: String(raw.createdAt ?? ''),
+    updatedAt: String(raw.updatedAt ?? ''),
+    assigneeId: raw.assigneeId ? String(raw.assigneeId) : undefined,
+    assigneeName: raw.assigneeName ? String(raw.assigneeName) : undefined,
+    attachments: (raw.attachments as Ticket['attachments']) ?? [],
+  };
+}
+
 export default function TicketsPage() {
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
 
-  // Filter tickets (using mock data for the demo student)
-  const userTickets = mockTickets.filter(t => t.studentId === 'student-1');
-  
-  const filteredTickets = userTickets.filter(ticket => {
-    const matchesSearch = !searchQuery || 
+  useEffect(() => {
+    fetch(`${API_BASE}/tickets`, { credentials: 'include' })
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to load tickets');
+        return res.json();
+      })
+      .then(data => setTickets((data.tickets as Record<string, unknown>[]).map(mapApiTicket)))
+      .catch(err => setError(err instanceof Error ? err.message : 'Failed to load tickets'))
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  const filteredTickets = tickets.filter(ticket => {
+    const matchesSearch = !searchQuery ||
       ticket.summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ticket.description.toLowerCase().includes(searchQuery.toLowerCase());
-    
+
     const matchesStatus = statusFilter === 'all' || ticket.status === statusFilter;
     const matchesPriority = priorityFilter === 'all' || ticket.priority === priorityFilter;
-    
+
     return matchesSearch && matchesStatus && matchesPriority;
   });
 
@@ -59,6 +92,26 @@ export default function TicketsPage() {
   const sortedTickets = [...filteredTickets].sort(
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   );
+
+  if (isLoading) {
+    return (
+      <div className="container py-8">
+        <div className="flex items-center justify-center py-12">
+          <p className="text-muted-foreground">Loading tickets...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="container py-8">
+        <div className="flex items-center justify-center py-12">
+          <p className="text-destructive">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container py-8">
@@ -127,11 +180,11 @@ export default function TicketsPage() {
         <Card>
           <CardContent className="py-12 text-center">
             <p className="text-muted-foreground mb-4">
-              {userTickets.length === 0
+              {tickets.length === 0
                 ? "You haven't created any tickets yet."
                 : 'No tickets match your filters.'}
             </p>
-            {userTickets.length === 0 ? (
+            {tickets.length === 0 ? (
               <Link to="/">
                 <Button>Create Your First Request</Button>
               </Link>
