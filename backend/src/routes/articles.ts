@@ -14,6 +14,13 @@ import type { ArticleQueryInput } from '../validation/schemas.js';
 
 const router = express.Router();
 
+function serializeArticle(article: any) {
+  return {
+    ...article,
+    id: article._id?.toString(),
+  };
+}
+
 /**
  * GET /articles
  * Lists published articles with optional filtering
@@ -68,7 +75,7 @@ router.get(
       ]);
 
       res.json({
-        articles,
+        articles: articles.map(serializeArticle),
         pagination: {
           page,
           limit,
@@ -108,7 +115,7 @@ router.get(
         return;
       }
 
-      res.json({ article });
+      res.json({ article: serializeArticle(article) });
     } catch (error) {
       console.error('Error fetching article:', error);
       

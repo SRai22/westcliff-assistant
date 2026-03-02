@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -13,20 +13,48 @@ import {
   MessageSquare,
   FileText,
 } from 'lucide-react';
-import { mockTickets, mockArticles } from '@/data/mockData';
 import { cn } from '@/lib/utils';
 import { ConversationalTriage } from '@/components/ai/ConversationalTriage';
+import type { Article, Ticket } from '@/types';
+import { listArticles, listTickets } from '@/lib/api';
+import { mockArticles } from '@/data/mockData';
 
 export default function HomePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [showChat, setShowChat] = useState(false);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [articles, setArticles] = useState<Article[]>(mockArticles.slice(0, 4));
 
-  // Get user's recent tickets
-  const userTickets = mockTickets.filter(t => t.studentId === 'student-1');
-  const openTickets = userTickets.filter(t => t.status !== 'RESOLVED');
-  const recentTickets = userTickets.slice(0, 3);
+  useEffect(() => {
+    let isActive = true;
+
+    Promise.all([
+      listTickets({ limit: 20 }),
+      listArticles({ limit: 4 }),
+    ])
+      .then(([ticketData, articleData]) => {
+        if (!isActive) {
+          return;
+        }
+
+        setTickets(ticketData);
+        setArticles(articleData.length > 0 ? articleData : mockArticles.slice(0, 4));
+      })
+      .catch((error) => {
+        console.error('Failed to load home page data:', error);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  const openTickets = tickets.filter(t => t.status !== 'RESOLVED');
+  const recentTickets = [...tickets]
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .slice(0, 3);
 
   const handleStartChat = () => {
     setShowChat(true);
@@ -157,7 +185,7 @@ export default function HomePage() {
           <div>
             <h2 className="text-lg font-semibold mb-4">Popular Articles</h2>
             <div className="space-y-3">
-              {mockArticles.slice(0, 4).map(article => (
+              {articles.map(article => (
                 <Link key={article.id} to={`/kb/${article.id}`}>
                   <Card className="transition-all hover:shadow-md hover:border-primary/20">
                     <CardContent className="flex items-center gap-4 p-4">

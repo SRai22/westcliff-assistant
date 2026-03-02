@@ -1,26 +1,43 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Search, ArrowRight, ChevronRight } from 'lucide-react';
-import { mockArticles, categoryIcons } from '@/data/mockData';
-import { CATEGORIES, Category } from '@/types';
+import { CATEGORIES } from '@/types';
+import type { Category, Article } from '@/types';
 import { cn } from '@/lib/utils';
+import { categoryIcons } from '@/lib/categoryIcons';
+import { listArticles } from '@/lib/api';
+import { mockArticles } from '@/data/mockData';
 
 export default function KnowledgeBasePage() {
+  const [searchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(
+    (searchParams.get('category') as Category | null) ?? null
+  );
+  const [articles, setArticles] = useState<Article[]>(mockArticles);
+
+  useEffect(() => {
+    listArticles({ limit: 100 })
+      .then((data) => {
+        setArticles(data.length > 0 ? data : mockArticles);
+      })
+      .catch((error) => {
+        console.error('Failed to load articles:', error);
+      });
+  }, []);
 
   // Get article counts per category
   const categoryCounts = CATEGORIES.reduce((acc, cat) => {
-    acc[cat] = mockArticles.filter(a => a.category === cat).length;
+    acc[cat] = articles.filter(a => a.category === cat).length;
     return acc;
   }, {} as Record<Category, number>);
 
   // Filter articles
-  const filteredArticles = mockArticles.filter(article => {
+  const filteredArticles = articles.filter(article => {
     const matchesSearch = !searchQuery || 
       article.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       article.summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -70,7 +87,7 @@ export default function KnowledgeBasePage() {
             >
               <span>All Articles</span>
               <Badge variant={!selectedCategory ? 'secondary' : 'outline'} className="text-xs">
-                {mockArticles.length}
+                {articles.length}
               </Badge>
             </button>
             {CATEGORIES.map(cat => (

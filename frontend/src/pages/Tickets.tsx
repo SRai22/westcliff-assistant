@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -18,10 +18,12 @@ import {
   ArrowRight,
   Clock,
 } from 'lucide-react';
-import { mockTickets, categoryIcons } from '@/data/mockData';
-import { TicketStatus, Priority, TICKET_STATUSES, PRIORITIES } from '@/types';
+import { TICKET_STATUSES, PRIORITIES } from '@/types';
+import type { Ticket, TicketStatus, Priority } from '@/types';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
+import { categoryIcons } from '@/lib/categoryIcons';
+import { listTickets } from '@/lib/api';
 
 const statusLabels: Record<TicketStatus, string> = {
   NEW: 'New',
@@ -40,9 +42,15 @@ export default function TicketsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
+  const [userTickets, setUserTickets] = useState<Ticket[]>([]);
 
-  // Filter tickets (using mock data for the demo student)
-  const userTickets = mockTickets.filter(t => t.studentId === 'student-1');
+  useEffect(() => {
+    listTickets()
+      .then(setUserTickets)
+      .catch((error) => {
+        console.error('Failed to load tickets:', error);
+      });
+  }, []);
   
   const filteredTickets = userTickets.filter(ticket => {
     const matchesSearch = !searchQuery || 

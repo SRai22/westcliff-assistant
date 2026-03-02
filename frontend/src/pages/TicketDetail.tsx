@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,10 +15,11 @@ import {
   Bot,
   CheckCircle2,
 } from 'lucide-react';
-import { mockTickets, mockMessages, categoryIcons } from '@/data/mockData';
-import { Message, TicketStatus, Priority } from '@/types';
+import type { Message, Ticket, TicketStatus, Priority } from '@/types';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow, format } from 'date-fns';
+import { categoryIcons } from '@/lib/categoryIcons';
+import { createTicketMessage, getTicket, getTicketMessages } from '@/lib/api';
 
 const statusLabels: Record<TicketStatus, string> = {
   NEW: 'New',
@@ -37,9 +38,51 @@ export default function TicketDetailPage() {
   const { ticketId } = useParams();
   const navigate = useNavigate();
   const [replyText, setReplyText] = useState('');
+  const [ticket, setTicket] = useState<Ticket | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const ticket = mockTickets.find(t => t.id === ticketId);
-  const messages = mockMessages.filter(m => m.ticketId === ticketId && !m.isInternalNote);
+  useEffect(() => {
+    if (!ticketId) {
+      setIsLoading(false);
+      return;
+    }
+
+    let isActive = true;
+
+    Promise.all([getTicket(ticketId), getTicketMessages(ticketId)])
+      .then(([ticketData, messageData]) => {
+        if (!isActive) {
+          return;
+        }
+
+        setTicket(ticketData);
+        setMessages(messageData.filter((message) => !message.isInternalNote));
+      })
+      .catch((error) => {
+        console.error('Failed to load ticket:', error);
+        if (isActive) {
+          setTicket(null);
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [ticketId]);
+
+  if (isLoading) {
+    return (
+      <div className="container py-12 text-center text-muted-foreground">
+        Loading ticket...
+      </div>
+    );
+  }
 
   if (!ticket) {
     return (
@@ -59,11 +102,17 @@ export default function TicketDetailPage() {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
-  const handleSendReply = () => {
-    if (replyText.trim()) {
-      // In a real app, this would make an API call
-      console.log('Sending reply:', replyText);
+  const handleSendReply = async () => {
+    if (!ticketId || !replyText.trim()) {
+      return;
+    }
+
+    try {
+      const newMessage = await createTicketMessage(ticketId, replyText.trim());
+      setMessages((prev) => [...prev, newMessage]);
       setReplyText('');
+    } catch (error) {
+      console.error('Failed to send reply:', error);
     }
   };
 

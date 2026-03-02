@@ -3,7 +3,7 @@ import { Bot, User } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Article } from '@/types';
+import type { Article } from '@/types';
 import { Link } from 'react-router-dom';
 
 export type MessageType = 'user' | 'ai' | 'system';

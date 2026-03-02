@@ -25,6 +25,34 @@ import type { CreateTicketInput, TicketQueryInput, UpdateTicketStatusInput, Crea
 
 const router = express.Router();
 
+function serializeTicket(ticket: any) {
+  const student = ticket.studentId && typeof ticket.studentId === 'object' && '_id' in ticket.studentId
+    ? ticket.studentId
+    : null;
+  const assignee = ticket.assigneeId && typeof ticket.assigneeId === 'object' && '_id' in ticket.assigneeId
+    ? ticket.assigneeId
+    : null;
+
+  return {
+    ...ticket,
+    id: ticket._id?.toString(),
+    studentId: student?._id?.toString() ?? ticket.studentId?.toString() ?? '',
+    studentName: student?.name ?? '',
+    studentEmail: student?.email ?? '',
+    assigneeId: assignee?._id?.toString() ?? ticket.assigneeId?.toString() ?? undefined,
+    assigneeName: assignee?.name ?? '',
+    assigneeEmail: assignee?.email ?? '',
+  };
+}
+
+function serializeMessage(message: any) {
+  return {
+    ...message,
+    id: message._id?.toString(),
+    ticketId: message.ticketId?.toString() ?? '',
+  };
+}
+
 /**
  * GET /tickets
  * Lists tickets with role-based filtering
@@ -63,6 +91,8 @@ router.get(
       // Execute query
       const [tickets, total] = await Promise.all([
         Ticket.find(filter)
+          .populate('studentId', 'name email')
+          .populate('assigneeId', 'name email')
           .sort({ createdAt: -1 })
           .skip(skip)
           .limit(limit)
@@ -71,7 +101,7 @@ router.get(
       ]);
 
       res.json({
-        tickets,
+        tickets: tickets.map(serializeTicket),
         pagination: {
           page,
           limit,
@@ -100,7 +130,10 @@ router.get(
       const { id } = req.params;
       const user = req.user!;
 
-      const ticket = await Ticket.findById(id).lean();
+      const ticket = await Ticket.findById(id)
+        .populate('studentId', 'name email')
+        .populate('assigneeId', 'name email')
+        .lean();
 
       if (!ticket) {
         res.status(404).json({ error: 'Ticket not found' });
@@ -113,7 +146,7 @@ router.get(
         return;
       }
 
-      res.json({ ticket });
+      res.json({ ticket: serializeTicket(ticket) });
     } catch (error) {
       console.error('Error fetching ticket:', error);
       res.status(500).json({ error: 'Internal server error' });
@@ -357,7 +390,7 @@ router.get(
         .sort({ createdAt: 1 })
         .lean();
 
-      res.json({ messages });
+      res.json({ messages: messages.map(serializeMessage) });
     } catch (error) {
       console.error('Error fetching messages:', error);
       res.status(500).json({ error: 'Internal server error' });

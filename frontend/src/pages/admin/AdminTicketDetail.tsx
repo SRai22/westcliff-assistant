@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,9 +14,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { 
-  ArrowLeft, 
-  Send, 
+import {
+  ArrowLeft,
+  Send,
   Sparkles,
   FileText,
   MessageSquare,
@@ -26,10 +26,19 @@ import {
   ListChecks,
   RefreshCw,
 } from 'lucide-react';
-import { mockTickets, mockMessages, categoryIcons, staffMembers } from '@/data/mockData';
-import { Message, TicketStatus, Priority, TICKET_STATUSES, PRIORITIES } from '@/types';
+import { TICKET_STATUSES, PRIORITIES } from '@/types';
+import type { Message, Ticket, TicketStatus, Priority } from '@/types';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow, format } from 'date-fns';
+import { categoryIcons } from '@/lib/categoryIcons';
+import {
+  createTicketMessage,
+  draftTicketReply,
+  getTicket,
+  getTicketMessages,
+  summarizeTicket,
+  updateTicketStatus,
+} from '@/lib/api';
 
 const statusLabels: Record<TicketStatus, string> = {
   NEW: 'New',
@@ -47,15 +56,55 @@ const priorityLabels: Record<Priority, string> = {
 export default function AdminTicketDetailPage() {
   const { ticketId } = useParams();
   const navigate = useNavigate();
+  const [ticket, setTicket] = useState<Ticket | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [replyText, setReplyText] = useState('');
   const [internalNote, setInternalNote] = useState('');
   const [aiDraft, setAiDraft] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const ticket = mockTickets.find(t => t.id === ticketId);
-  const allMessages = mockMessages.filter(m => m.ticketId === ticketId);
-  const publicMessages = allMessages.filter(m => !m.isInternalNote);
-  const internalNotes = allMessages.filter(m => m.isInternalNote);
+  useEffect(() => {
+    if (!ticketId) {
+      setIsLoading(false);
+      return;
+    }
+
+    let isActive = true;
+
+    Promise.all([getTicket(ticketId), getTicketMessages(ticketId)])
+      .then(([ticketData, messageData]) => {
+        if (!isActive) {
+          return;
+        }
+
+        setTicket(ticketData);
+        setMessages(messageData);
+      })
+      .catch((error) => {
+        console.error('Failed to load admin ticket:', error);
+        if (isActive) {
+          setTicket(null);
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [ticketId]);
+
+  if (isLoading) {
+    return (
+      <div className="container py-12 text-center text-muted-foreground">
+        Loading ticket...
+      </div>
+    );
+  }
 
   if (!ticket) {
     return (
@@ -71,77 +120,110 @@ export default function AdminTicketDetailPage() {
     );
   }
 
-  const getInitials = (name: string) => {
-    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-  };
+  const publicMessages = messages.filter((message) => !message.isInternalNote);
+  const internalNotes = messages.filter((message) => message.isInternalNote);
 
-  const handleSendReply = () => {
-    if (replyText.trim()) {
-      console.log('Sending reply:', replyText);
-      setReplyText('');
+  const handleStatusChange = async (nextStatus: TicketStatus) => {
+    if (!ticketId) {
+      return;
+    }
+
+    try {
+      const updated = await updateTicketStatus(ticketId, nextStatus);
+      setTicket((prev) => prev ? {
+        ...prev,
+        status: nextStatus,
+        updatedAt: String(updated.updatedAt ?? new Date().toISOString()),
+      } : prev);
+    } catch (error) {
+      console.error('Failed to update ticket status:', error);
     }
   };
 
-  const handleAddNote = () => {
-    if (internalNote.trim()) {
-      console.log('Adding internal note:', internalNote);
+  const handleSendReply = async () => {
+    if (!ticketId || !replyText.trim()) {
+      return;
+    }
+
+    try {
+      const message = await createTicketMessage(ticketId, replyText.trim());
+      setMessages((prev) => [...prev, message]);
+      setReplyText('');
+    } catch (error) {
+      console.error('Failed to send reply:', error);
+    }
+  };
+
+  const handleAddNote = async () => {
+    if (!ticketId || !internalNote.trim()) {
+      return;
+    }
+
+    try {
+      const message = await createTicketMessage(ticketId, internalNote.trim(), true);
+      setMessages((prev) => [...prev, message]);
       setInternalNote('');
+    } catch (error) {
+      console.error('Failed to add internal note:', error);
     }
   };
 
   const handleAISummarize = async () => {
+    if (!ticketId) {
+      return;
+    }
+
     setIsGenerating(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setAiDraft(`**Summary:**
-The student needs an updated I-20 document for their visa renewal appointment. They have confirmed they are in the MBA program with expected graduation in May 2025.
 
-**Key Points:**
-- Visa expires in 2 months
-- Embassy appointment scheduled
-- MBA student, graduating May 2025
-
-**Recommended Action:**
-Process I-20 update request with priority given the visa timeline.`);
-    setIsGenerating(false);
+    try {
+      const response = await summarizeTicket(ticketId, messages);
+      setAiDraft(response.summary);
+    } catch (error) {
+      console.error('Failed to summarize ticket:', error);
+      setAiDraft(error instanceof Error ? error.message : 'Failed to summarize ticket.');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleAIDraftResponse = async () => {
+    if (!ticketId) {
+      return;
+    }
+
     setIsGenerating(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setAiDraft(`Hi Alex,
 
-Thank you for confirming your program details. I'm happy to help with your I-20 update request.
-
-I've initiated the process for your updated I-20. Given your visa timeline, I'm prioritizing this request. You should receive the updated document via email within 2-3 business days.
-
-Please let me know if you need anything else or if you have questions about your visa renewal process.
-
-Best regards,
-Dr. Sarah Chen
-International Affairs Office`);
-    setIsGenerating(false);
+    try {
+      const response = await draftTicketReply(ticketId, messages);
+      setAiDraft(response.draft);
+    } catch (error) {
+      console.error('Failed to draft reply:', error);
+      setAiDraft(error instanceof Error ? error.message : 'Failed to draft reply.');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleAISuggestSteps = async () => {
+    if (!ticketId) {
+      return;
+    }
+
     setIsGenerating(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setAiDraft(`**Suggested Next Steps:**
 
-1. ✅ Verify student's enrollment status in SEVIS
-2. ✅ Confirm program end date matches student's statement (May 2025)
-3. 📋 Generate updated I-20 in SEVIS
-4. 📧 Send I-20 to student's email with tracking
-5. 📝 Update ticket status to "Resolved"
-6. 🔄 Follow up in 1 week to confirm receipt
-
-**Notes:**
-- Student has upcoming visa appointment - prioritize
-- Consider adding travel signature if student plans embassy visit abroad`);
-    setIsGenerating(false);
+    try {
+      const response = await summarizeTicket(ticketId, messages);
+      setAiDraft(`Suggested next steps endpoint is not available yet.\n\nCurrent thread summary:\n${response.summary}`);
+    } catch (error) {
+      console.error('Failed to summarize for next steps:', error);
+      setAiDraft(error instanceof Error ? error.message : 'Failed to summarize ticket.');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const insertDraft = () => {
-    setReplyText(aiDraft.replace(/\*\*/g, '').replace(/\n/g, '\n'));
+    setReplyText(aiDraft);
     setAiDraft('');
   };
 
@@ -153,9 +235,7 @@ International Affairs Office`);
       </Button>
 
       <div className="grid lg:grid-cols-3 gap-8">
-        {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Ticket Header */}
           <Card>
             <CardHeader className="pb-4">
               <div className="flex items-start gap-4">
@@ -165,40 +245,44 @@ International Affairs Office`);
                 <div className="flex-1 min-w-0">
                   <CardTitle className="text-xl mb-2">{ticket.summary}</CardTitle>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-                    <span>{ticket.studentName}</span>
-                    <span>•</span>
-                    <span>{ticket.studentEmail}</span>
+                    <span>{ticket.studentName || 'Student'}</span>
+                    {ticket.studentEmail && (
+                      <>
+                        <span>•</span>
+                        <span>{ticket.studentEmail}</span>
+                      </>
+                    )}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Select defaultValue={ticket.status}>
+                    <Select value={ticket.status} onValueChange={(value: TicketStatus) => handleStatusChange(value)}>
                       <SelectTrigger className="w-[140px] h-8">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {TICKET_STATUSES.map(s => (
-                          <SelectItem key={s} value={s}>{statusLabels[s]}</SelectItem>
+                        {TICKET_STATUSES.map((status) => (
+                          <SelectItem key={status} value={status}>{statusLabels[status]}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    <Select defaultValue={ticket.priority}>
+                    <Select value={ticket.priority} disabled>
                       <SelectTrigger className="w-[120px] h-8">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {PRIORITIES.map(p => (
-                          <SelectItem key={p} value={p}>{priorityLabels[p]}</SelectItem>
+                        {PRIORITIES.map((priority) => (
+                          <SelectItem key={priority} value={priority}>{priorityLabels[priority]}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    <Select defaultValue={ticket.assigneeId || 'unassigned'}>
+                    <Select value={ticket.assigneeId || 'unassigned'} disabled>
                       <SelectTrigger className="w-[160px] h-8">
                         <SelectValue placeholder="Assign to..." />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="unassigned">Unassigned</SelectItem>
-                        {staffMembers.map(staff => (
-                          <SelectItem key={staff.id} value={staff.id}>{staff.name}</SelectItem>
-                        ))}
+                        {ticket.assigneeId && ticket.assigneeName && (
+                          <SelectItem value={ticket.assigneeId}>{ticket.assigneeName}</SelectItem>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -210,7 +294,6 @@ International Affairs Office`);
             </CardContent>
           </Card>
 
-          {/* Messages Tabs */}
           <Card>
             <Tabs defaultValue="conversation">
               <CardHeader className="pb-0">
@@ -233,7 +316,7 @@ International Affairs Office`);
 
               <TabsContent value="conversation" className="m-0">
                 <CardContent className="pt-6 space-y-4">
-                  {publicMessages.map(message => (
+                  {publicMessages.map((message) => (
                     <MessageBubble key={message.id} message={message} />
                   ))}
                   {publicMessages.length === 0 && (
@@ -246,7 +329,7 @@ International Affairs Office`);
 
               <TabsContent value="internal" className="m-0">
                 <CardContent className="pt-6 space-y-4">
-                  {internalNotes.map(note => (
+                  {internalNotes.map((note) => (
                     <div key={note.id} className="p-3 rounded-lg bg-muted/50 border border-dashed border-border">
                       <div className="flex items-center gap-2 mb-2 text-sm">
                         <Lock className="h-3 w-3 text-muted-foreground" />
@@ -264,12 +347,11 @@ International Affairs Office`);
                     </p>
                   )}
 
-                  {/* Add Internal Note */}
                   <div className="pt-4 border-t border-border">
                     <Textarea
                       placeholder="Add an internal note (only visible to staff)..."
                       value={internalNote}
-                      onChange={e => setInternalNote(e.target.value)}
+                      onChange={(e) => setInternalNote(e.target.value)}
                       rows={2}
                     />
                     <div className="flex justify-end mt-2">
@@ -284,14 +366,13 @@ International Affairs Office`);
             </Tabs>
           </Card>
 
-          {/* Reply Box */}
           <Card>
             <CardContent className="pt-6">
               <div className="space-y-4">
                 <Textarea
                   placeholder="Type your reply to the student..."
                   value={replyText}
-                  onChange={e => setReplyText(e.target.value)}
+                  onChange={(e) => setReplyText(e.target.value)}
                   rows={4}
                 />
                 <div className="flex items-center justify-end gap-2">
@@ -305,7 +386,6 @@ International Affairs Office`);
           </Card>
         </div>
 
-        {/* AI Assist Sidebar */}
         <div className="space-y-6">
           <Card className="border-primary/20">
             <CardHeader className="pb-3">
@@ -315,8 +395,8 @@ International Affairs Office`);
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="w-full justify-start gap-2"
                 onClick={handleAISummarize}
                 disabled={isGenerating}
@@ -324,8 +404,8 @@ International Affairs Office`);
                 <FileText className="h-4 w-4" />
                 Summarize Thread
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="w-full justify-start gap-2"
                 onClick={handleAIDraftResponse}
                 disabled={isGenerating}
@@ -333,8 +413,8 @@ International Affairs Office`);
                 <Wand2 className="h-4 w-4" />
                 Draft Response
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="w-full justify-start gap-2"
                 onClick={handleAISuggestSteps}
                 disabled={isGenerating}
@@ -343,7 +423,6 @@ International Affairs Office`);
                 Suggest Next Steps
               </Button>
 
-              {/* AI Output */}
               {(isGenerating || aiDraft) && (
                 <div className="mt-4 pt-4 border-t border-border">
                   {isGenerating ? (
@@ -371,7 +450,6 @@ International Affairs Office`);
             </CardContent>
           </Card>
 
-          {/* Ticket Info */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Ticket Details</CardTitle>
@@ -388,7 +466,7 @@ International Affairs Office`);
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Service</span>
-                <span>{ticket.service}</span>
+                <span>{ticket.service || 'General Inquiry'}</span>
               </div>
               <Separator />
               <div className="flex items-center justify-between">
@@ -443,7 +521,7 @@ function MessageBubble({ message }: { message: Message }) {
         </div>
         <div className={cn(
           'rounded-2xl px-4 py-3 inline-block text-left',
-          message.senderRole === 'STUDENT' 
+          message.senderRole === 'STUDENT'
             ? 'bg-primary text-primary-foreground rounded-br-sm'
             : 'bg-secondary text-secondary-foreground rounded-bl-sm'
         )}>

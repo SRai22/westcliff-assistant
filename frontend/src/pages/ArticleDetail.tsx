@@ -1,17 +1,83 @@
+import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ArrowLeft, Calendar, Tag, Ticket, ChevronRight } from 'lucide-react';
-import { mockArticles, categoryIcons } from '@/data/mockData';
 import ReactMarkdown from 'react-markdown';
+import type { Article } from '@/types';
+import { categoryIcons } from '@/lib/categoryIcons';
+import { getArticle, listArticles } from '@/lib/api';
+import { mockArticles } from '@/data/mockData';
 
 export default function ArticleDetailPage() {
   const { articleId } = useParams();
   const navigate = useNavigate();
+  const [article, setArticle] = useState<Article | null>(null);
+  const [relatedArticles, setRelatedArticles] = useState<Article[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const article = mockArticles.find(a => a.id === articleId);
+  useEffect(() => {
+    if (!articleId) {
+      setIsLoading(false);
+      return;
+    }
+
+    let isActive = true;
+
+    getArticle(articleId)
+      .then(async (articleData) => {
+        if (!isActive) {
+          return;
+        }
+
+        setArticle(articleData);
+
+        const related = await listArticles({
+          category: articleData.category,
+          limit: 4,
+        });
+
+        if (!isActive) {
+          return;
+        }
+        setRelatedArticles(
+          (related.length > 0 ? related : mockArticles)
+            .filter((item) => item.id !== articleData.id && item.category === articleData.category)
+            .slice(0, 3)
+        );
+      })
+      .catch((error) => {
+        console.error('Failed to load article:', error);
+        if (isActive) {
+          const fallbackArticle = mockArticles.find((item) => item.id === articleId) ?? null;
+          setArticle(fallbackArticle);
+          setRelatedArticles(
+            mockArticles
+              .filter((item) => item.id !== articleId && item.category === fallbackArticle?.category)
+              .slice(0, 3)
+          );
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [articleId]);
+
+  if (isLoading) {
+    return (
+      <div className="container py-12 text-center text-muted-foreground">
+        Loading article...
+      </div>
+    );
+  }
 
   if (!article) {
     return (
@@ -26,12 +92,6 @@ export default function ArticleDetailPage() {
       </div>
     );
   }
-
-  // Related articles in same category
-  const relatedArticles = mockArticles
-    .filter(a => a.category === article.category && a.id !== article.id)
-    .slice(0, 3);
-
   return (
     <div className="container py-8">
       {/* Breadcrumb */}
