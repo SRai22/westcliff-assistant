@@ -29,6 +29,10 @@ cp .env.example .env
 
 # Start all services
 docker compose up --build
+
+# Seed knowledge base articles (recommended for a fresh database)
+cd backend
+npm run seed
 ```
 
 Once running:
@@ -47,6 +51,10 @@ Once running:
 docker compose up --build frontend
 docker compose up --build backend mongo
 docker compose up --build ai
+
+# Seed the backend knowledge base
+cd backend
+npm run seed
 
 # Stop all services
 docker compose down
