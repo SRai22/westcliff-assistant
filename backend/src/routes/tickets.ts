@@ -1,6 +1,6 @@
 /**
  * Ticket CRUD Routes
- * 
+ *
  * Handles listing, retrieving, and creating tickets with proper RBAC.
  * Students can only see/access their own tickets.
  * Staff can see/access all tickets.
@@ -10,7 +10,12 @@ import express, { Request, Response } from 'express';
 import { Server as SocketIOServer } from 'socket.io';
 import { requireAuth, requireStaff } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
-import { createTicketSchema, ticketQuerySchema, updateTicketStatusSchema, createMessageSchema } from '../validation/schemas.js';
+import {
+  createTicketSchema,
+  ticketQuerySchema,
+  updateTicketStatusSchema,
+  createMessageSchema,
+} from '../validation/schemas.js';
 import {
   Ticket,
   TicketMessage,
@@ -20,8 +25,13 @@ import {
   UserRole,
   AuditAction,
 } from '../models/index.js';
-import type { CreateTicketInput, TicketQueryInput, UpdateTicketStatusInput, CreateMessageInput } from '../validation/schemas.js';
-/*import { isValidStatusTransition } from '../services/ticketTransitions.js'; Ningmo Liu*/
+import type {
+  CreateTicketInput,
+  TicketQueryInput,
+  UpdateTicketStatusInput,
+  CreateMessageInput,
+} from '../validation/schemas.js';
+import { isValidStatusTransition } from '../services/ticketTransitions.js'; /* Ningmo Liu */
 
 const router = express.Router();
 
@@ -62,11 +72,7 @@ router.get(
 
       // Execute query
       const [tickets, total] = await Promise.all([
-        Ticket.find(filter)
-          .sort({ createdAt: -1 })
-          .skip(skip)
-          .limit(limit)
-          .lean(),
+        Ticket.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
         Ticket.countDocuments(filter),
       ]);
 
@@ -92,34 +98,30 @@ router.get(
  * Students: can only view their own (404 otherwise)
  * Staff: can view any ticket
  */
-router.get(
-  '/:id',
-  requireAuth,
-  async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { id } = req.params;
-      const user = req.user!;
+router.get('/:id', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const user = req.user!;
 
-      const ticket = await Ticket.findById(id).lean();
+    const ticket = await Ticket.findById(id).lean();
 
-      if (!ticket) {
-        res.status(404).json({ error: 'Ticket not found' });
-        return;
-      }
-
-      // Students can only view their own tickets
-      if (user.role === UserRole.STUDENT && ticket.studentId.toString() !== user._id.toString()) {
-        res.status(404).json({ error: 'Ticket not found' });
-        return;
-      }
-
-      res.json({ ticket });
-    } catch (error) {
-      console.error('Error fetching ticket:', error);
-      res.status(500).json({ error: 'Internal server error' });
+    if (!ticket) {
+      res.status(404).json({ error: 'Ticket not found' });
+      return;
     }
+
+    // Students can only view their own tickets
+    if (user.role === UserRole.STUDENT && ticket.studentId.toString() !== user._id.toString()) {
+      res.status(404).json({ error: 'Ticket not found' });
+      return;
+    }
+
+    res.json({ ticket });
+  } catch (error) {
+    console.error('Error fetching ticket:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-);
+});
 
 /**
  * POST /tickets/intake/confirm
@@ -174,7 +176,7 @@ router.post(
       }
 
       // Create status history entry (to NEW)
-      const statusHistory = await TicketStatusHistory.create({
+      await TicketStatusHistory.create({
         ticketId: ticket._id,
         fromStatus: TicketStatus.NEW, // First status, so from=to
         toStatus: TicketStatus.NEW,
@@ -184,7 +186,7 @@ router.post(
       });
 
       // Create audit log entry
-      const auditLog = await AuditLog.create({
+      await AuditLog.create({
         action: AuditAction.TICKET_CREATED,
         userId: user._id,
         userName: user.name,
@@ -239,25 +241,28 @@ router.patch(
         return;
       }
 
-      /* Validate transition - Ningmo Liu: 
-      Adds business-level validation for ticket status transitions.
-
-      Prevents invalid state changes (e.g., RESOLVED → NEW) 
-      by enforcing an explicit transition map.
-
-      This improves data integrity and aligns ticket workflow 
-      with real-world helpdesk lifecycle management.*/
-      /*if (!isValidStatusTransition(fromStatus, toStatus)) {
-        res.status(400).json({
-          error: 'Invalid status transition',
-          message: `Cannot change status from ${fromStatus} to ${toStatus}`,
-        });
-        return;
-      }*/
-
       // Save old status for history
       const fromStatus = ticket.status;
       const toStatus = data.status as TicketStatus;
+
+      /* Validate transition - Ningmo Liu:
+         Adds business-level validation for ticket status transitions.
+
+         Prevents invalid state changes (e.g., RESOLVED → NEW)
+         by enforcing an explicit transition map.
+
+         This improves data integrity and aligns ticket workflow
+         with real-world helpdesk lifecycle management.
+      */
+      if (!isValidStatusTransition(fromStatus, toStatus)) {
+        res.status(400).json({
+          error: 'Invalid status transition',
+          message: `Cannot change status from ${fromStatus} to ${toStatus}`,
+          fromStatus,
+          toStatus,
+        });
+        return;
+      }
 
       // Update ticket status
       ticket.status = toStatus;
@@ -322,48 +327,42 @@ router.patch(
  * Students: can only view messages on their own tickets, excluding internal notes
  * Staff: can view all messages including internal notes on any ticket
  */
-router.get(
-  '/:id/messages',
-  requireAuth,
-  async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { id } = req.params;
-      const user = req.user!;
+router.get('/:id/messages', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const user = req.user!;
 
-      // Find the ticket to check ownership
-      const ticket = await Ticket.findById(id).lean();
+    // Find the ticket to check ownership
+    const ticket = await Ticket.findById(id).lean();
 
-      if (!ticket) {
-        res.status(404).json({ error: 'Ticket not found' });
-        return;
-      }
-
-      // Students can only view messages on their own tickets
-      if (user.role === UserRole.STUDENT && ticket.studentId.toString() !== user._id.toString()) {
-        res.status(404).json({ error: 'Ticket not found' });
-        return;
-      }
-
-      // Build query filter
-      const filter: any = { ticketId: id };
-
-      // Students cannot see internal notes
-      if (user.role === UserRole.STUDENT) {
-        filter.isInternalNote = false;
-      }
-
-      // Fetch messages
-      const messages = await TicketMessage.find(filter)
-        .sort({ createdAt: 1 })
-        .lean();
-
-      res.json({ messages });
-    } catch (error) {
-      console.error('Error fetching messages:', error);
-      res.status(500).json({ error: 'Internal server error' });
+    if (!ticket) {
+      res.status(404).json({ error: 'Ticket not found' });
+      return;
     }
+
+    // Students can only view messages on their own tickets
+    if (user.role === UserRole.STUDENT && ticket.studentId.toString() !== user._id.toString()) {
+      res.status(404).json({ error: 'Ticket not found' });
+      return;
+    }
+
+    // Build query filter
+    const filter: any = { ticketId: id };
+
+    // Students cannot see internal notes
+    if (user.role === UserRole.STUDENT) {
+      filter.isInternalNote = false;
+    }
+
+    // Fetch messages
+    const messages = await TicketMessage.find(filter).sort({ createdAt: 1 }).lean();
+
+    res.json({ messages });
+  } catch (error) {
+    console.error('Error fetching messages:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-);
+});
 
 /**
  * POST /tickets/:id/messages
@@ -397,7 +396,7 @@ router.post(
       }
 
       // Students cannot create internal notes (silently ignore if they try)
-      const isInternalNote = user.role === UserRole.STAFF ? (data.isInternalNote || false) : false;
+      const isInternalNote = user.role === UserRole.STAFF ? data.isInternalNote || false : false;
 
       // Create the message
       const message = await TicketMessage.create({
